@@ -16,13 +16,35 @@
  */
 package org.microbean.kubernetes.controller.cdi;
 
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.BeforeDestroyed;
 import javax.enterprise.context.Initialized;
 
 import javax.enterprise.event.Observes;
+import javax.enterprise.event.ObservesAsync;
 
+import javax.enterprise.inject.Produces;
+
+import javax.inject.Qualifier;
+
+import io.fabric8.kubernetes.api.model.ConfigMap;
+import io.fabric8.kubernetes.api.model.ConfigMapList;
+import io.fabric8.kubernetes.api.model.DoneableConfigMap;
 import io.fabric8.kubernetes.api.model.HasMetadata;
+
+import io.fabric8.kubernetes.client.KubernetesClient;
+
+import io.fabric8.kubernetes.client.dsl.base.HasMetadataOperation;
+import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.Operation;
+import io.fabric8.kubernetes.client.dsl.Resource;
 
 import org.junit.Test;
 
@@ -58,14 +80,19 @@ public class TestEventDistribution {
     instanceCount++;
   }
 
+  @Produces
+  @ApplicationScoped
+  @AllConfigMapEvents
+  private static final Operation<ConfigMap, ConfigMapList, DoneableConfigMap, Resource<ConfigMap, DoneableConfigMap>> selectAllConfigMaps(final KubernetesClient client) {
+    return client.configMaps();
+  }
+
+  private final void onConfigMapEvent(@ObservesAsync @AllConfigMapEvents final org.microbean.kubernetes.controller.Event<? extends HasMetadata> event) {
+    org.microbean.cdi.AbstractBlockingExtension.unblockAll();
+  }
 
   private final void onStartup(@Observes @Initialized(ApplicationScoped.class) final Object event, final KubernetesControllerExtension extension) throws InterruptedException {
     assertNotNull(extension);
-  }
-
-  private final void onEvent(@Observes final org.microbean.kubernetes.controller.Event<? extends HasMetadata> event) {
-    System.out.println("*** event: " + event);
-    org.microbean.cdi.AbstractBlockingExtension.unblockAll();
   }
   
   @Test
@@ -76,6 +103,15 @@ public class TestEventDistribution {
     assertEquals(1, oldInstanceCount);
     Main.main(null);
     assertEquals(oldInstanceCount + 1, instanceCount);
+  }
+
+  @Documented
+  @KubernetesEventSelector
+  @Qualifier
+  @Retention(value = RetentionPolicy.RUNTIME)
+  @Target({ ElementType.METHOD, ElementType.PARAMETER })
+  private @interface AllConfigMapEvents {
+
   }
   
 }

@@ -64,7 +64,7 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-cdi</artifactId>
-        <version>0.2.0</version>
+        <version>0.3.0-SNAPSHOT</version>
         <type>jar</type>
       </dependency>
       
