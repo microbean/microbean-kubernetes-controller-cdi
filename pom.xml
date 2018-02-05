@@ -64,14 +64,21 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-cdi</artifactId>
-        <version>0.3.0-SNAPSHOT</version>
+        <version>0.3.0</version>
+        <type>jar</type>
+      </dependency>
+
+      <dependency>
+        <groupId>org.microbean</groupId>
+        <artifactId>microbean-configuration-cdi</artifactId>
+        <version>0.2.0</version>
         <type>jar</type>
       </dependency>
       
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-kubernetes-client-cdi</artifactId>
-        <version>0.2.0-SNAPSHOT</version>
+        <version>0.2.0</version>
         <type>jar</type>
       </dependency>
 
@@ -106,6 +113,13 @@
     <dependency>
       <groupId>org.microbean</groupId>
       <artifactId>microbean-cdi</artifactId>
+      <type>jar</type>
+      <scope>compile</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.microbean</groupId>
+      <artifactId>microbean-configuration-cdi</artifactId>
       <type>jar</type>
       <scope>compile</scope>
     </dependency>
