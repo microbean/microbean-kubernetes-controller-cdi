@@ -45,6 +45,13 @@
         <version>1.3</version>
         <type>jar</type>
       </dependency>
+
+      <dependency>
+        <groupId>javax.el</groupId>
+        <artifactId>javax.el-api</artifactId>
+        <version>3.0.1-b04</version>
+        <type>jar</type>
+      </dependency>
       
       <dependency>
         <groupId>javax.enterprise</groupId>
@@ -53,6 +60,20 @@
         <type>jar</type>
       </dependency>
 
+      <dependency>
+        <groupId>org.glassfish</groupId>
+        <artifactId>javax.el</artifactId>
+        <version>3.0.1-b08</version>
+        <type>jar</type>
+      </dependency>
+
+      <dependency>
+        <groupId>org.jboss</groupId>
+        <artifactId>jandex</artifactId>
+        <version>2.0.4.Final</version>
+        <type>jar</type>
+      </dependency>
+      
       <dependency>
         <groupId>org.jboss.weld</groupId>
         <artifactId>weld-core-bom</artifactId>
@@ -70,6 +91,13 @@
 
       <dependency>
         <groupId>org.microbean</groupId>
+        <artifactId>microbean-configuration</artifactId>
+        <version>0.2.0</version>
+        <type>jar</type>
+      </dependency>
+      
+      <dependency>
+        <groupId>org.microbean</groupId>
         <artifactId>microbean-configuration-cdi</artifactId>
         <version>0.2.0</version>
         <type>jar</type>
@@ -85,7 +113,7 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-kubernetes-controller</artifactId>
-        <version>0.0.1</version>
+        <version>0.0.2-SNAPSHOT</version>
         <type>jar</type>
       </dependency>
 
@@ -154,8 +182,23 @@
       <scope>provided</scope>
     </dependency>
 
+    <dependency>
+      <groupId>javax.el</groupId>
+      <artifactId>javax.el-api</artifactId>
+      <type>jar</type>
+      <scope>provided</scope>
+    </dependency>
+
     
     <!-- Runtime-scoped dependencies. -->
+
+    <dependency>
+      <groupId>org.jboss</groupId>
+      <artifactId>jandex</artifactId>
+      <type>jar</type>
+      <scope>runtime</scope>
+      <optional>true</optional>
+    </dependency>
 
     <dependency>
       <groupId>org.microbean</groupId>
@@ -167,7 +210,15 @@
 
     
     <!-- Test-scoped dependencies. -->
-    
+
+
+    <dependency>
+      <groupId>org.glassfish</groupId>
+      <artifactId>javax.el</artifactId>
+      <type>jar</type>
+      <scope>test</scope>
+    </dependency>
+
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
@@ -182,6 +233,13 @@
       <scope>test</scope>
     </dependency>
 
+    <dependency>
+      <groupId>org.microbean</groupId>
+      <artifactId>microbean-configuration</artifactId>
+      <type>jar</type>
+      <scope>test</scope>
+    </dependency>
+    
     <dependency>
       <groupId>org.microbean</groupId>
       <artifactId>microbean-main</artifactId>
@@ -308,7 +366,7 @@
 
     <!-- maven-javadoc-plugin properties; see https://maven.apache.org/plugins/maven-javadoc-plugin/javadoc-mojo.html -->
     <doctitle>&lt;a href="${project.url}" target="_parent"&gt;${project.artifactId}&lt;/a&gt; ${project.version} &lt;a href="https://travis-ci.org/microbean/${project.artifactId}" target="_parent"&gt;&lt;img src="https://travis-ci.org/microbean/${project.artifactId}.svg?branch=master"&gt;&lt;/a&gt;</doctitle>
-    <links>https://microbean.github.io/microbean-kubernetes/apidocs/,https://microbean.github.io/microbean-development-annotations/apidocs/,http://jcip.net/annotations/doc/</links>
+    <links>http://docs.jboss.org/cdi/api/2.0/,https://microbean.github.io/microbean-cdi/apidocs/,https://microbean.github.io/microbean-kubernetes-controller/apidocs/,https://docs.oracle.com/javaee/7/api/,https://microbean.github.io/microbean-development-annotations/apidocs/,http://jcip.net/annotations/doc/</links>
     
     <!-- maven-release-plugin properties; see http://maven.apache.org/maven-release/maven-release-plugin/perform-mojo.html -->
     <goals>deploy,site-deploy</goals>
@@ -327,9 +385,11 @@
     <plugins>
       <plugin>
         <artifactId>maven-javadoc-plugin</artifactId>
+        <!--
         <configuration>
           <doclint>-missing</doclint>
         </configuration>
+        -->
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>

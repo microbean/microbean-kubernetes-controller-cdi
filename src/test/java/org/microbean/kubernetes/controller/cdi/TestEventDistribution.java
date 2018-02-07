@@ -88,6 +88,7 @@ public class TestEventDistribution {
   }
 
   private final void onConfigMapEvent(@ObservesAsync @AllConfigMapEvents final org.microbean.kubernetes.controller.Event<? extends HasMetadata> event) {
+    System.out.println("*** configMap event: " + event);
     org.microbean.cdi.AbstractBlockingExtension.unblockAll();
   }
 
