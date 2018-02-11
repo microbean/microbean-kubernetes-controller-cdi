@@ -46,6 +46,7 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Operation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import org.microbean.main.Main;
@@ -104,6 +105,11 @@ public class TestEventDistribution {
     assertEquals(1, oldInstanceCount);
     Main.main(null);
     assertEquals(oldInstanceCount + 1, instanceCount);
+  }
+
+  @BeforeClass
+  public static void setUpLogging() {
+    System.setProperty("java.util.logging.config.file", Thread.currentThread().getContextClassLoader().getResource("logging.properties").getPath());
   }
 
   @Documented

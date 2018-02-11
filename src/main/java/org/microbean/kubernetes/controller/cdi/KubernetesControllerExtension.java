@@ -73,9 +73,10 @@ import io.fabric8.kubernetes.client.dsl.Operation;
 import org.microbean.cdi.AbstractBlockingExtension;
 import org.microbean.cdi.Annotations;
 
-import org.microbean.kubernetes.controller.AbstractEventDistributor;
+import org.microbean.kubernetes.controller.AbstractEvent;
 import org.microbean.kubernetes.controller.Controller;
 import org.microbean.kubernetes.controller.EventQueue;
+import org.microbean.kubernetes.controller.EventDistributor;
 
 import static javax.interceptor.Interceptor.Priority.LIBRARY_AFTER;
 import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
@@ -460,14 +461,20 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           final Set<Annotation> qualifiers = bean.getQualifiers();
 
           final Set<Bean<?>> notificationOptionsBeans = beanManager.getBeans(NotificationOptions.class, qualifiers.toArray(new Annotation[qualifiers.size()]));
+
           final Bean<?> notificationOptionsBean = beanManager.resolve(notificationOptionsBeans);
+
           final NotificationOptions notificationOptions;
           if (notificationOptionsBean == null) {
             notificationOptions = null;
           } else {
             notificationOptions = (NotificationOptions)beanManager.getReference(notificationOptionsBean, NotificationOptions.class, beanManager.createCreationalContext(notificationOptionsBean));
-          }          
-          final Consumer<EventQueue<? extends T>> eventDistributor = new EventDistributor<>(knownObjects, qualifiers, notificationOptions);
+          }
+          
+          final Consumer<AbstractEvent<? extends T>> cdiEventDistributor = new CDIEventDistributor<T>(qualifiers, notificationOptions);
+
+          final EventDistributor<T> eventDistributor = new EventDistributor<>(knownObjects);
+          eventDistributor.addConsumer(cdiEventDistributor);
           
           final Controller<T> controller = new Controller<>(contextualReference, knownObjects, eventDistributor);
           controller.start();
@@ -522,6 +529,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         }
       }
     }
+
+    // TODO: go through all the CDI event broadcasters and close them
+    // too; we don't currently keep track of them
+
+    
     if (exception instanceof IOException) {
       throw (IOException)exception;
     } else if (exception instanceof RuntimeException) {
@@ -691,7 +703,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    */
 
   
-  private static final class EventDistributor<T extends HasMetadata> extends AbstractEventDistributor<T> {
+  private static final class CDIEventDistributor<T extends HasMetadata> implements Consumer<AbstractEvent<? extends T>> {
 
     private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];
     
@@ -701,14 +713,14 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
     private final Logger logger;
     
-    private EventDistributor(final Map<Object, T> knownObjects, final Set<Annotation> qualifiers, final NotificationOptions notificationOptions) {
-      super(knownObjects);
+    private CDIEventDistributor(final Set<Annotation> qualifiers, final NotificationOptions notificationOptions) {
+      super();
       final String cn = this.getClass().getName();      
       this.logger = Logger.getLogger(cn);
       assert this.logger != null;
       final String mn = "<init>";
       if (this.logger.isLoggable(Level.FINER)) {
-        this.logger.entering(cn, mn, new Object[] { knownObjects, qualifiers, notificationOptions });
+        this.logger.entering(cn, mn, new Object[] { qualifiers, notificationOptions });
       }
       if (qualifiers == null) {
         this.qualifiers = EMPTY_ANNOTATION_ARRAY;
@@ -722,9 +734,9 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
 
     @Override
-    protected final void fireEvent(final org.microbean.kubernetes.controller.Event<T> controllerEvent) {
+    public final void accept(final AbstractEvent<? extends T> controllerEvent) {
       final String cn = this.getClass().getName();
-      final String mn = "fireEvent";
+      final String mn = "accept";
       if (this.logger.isLoggable(Level.FINER)) {
         this.logger.entering(cn, mn, controllerEvent);
       }
@@ -734,11 +746,14 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         assert beanManager != null;
         final javax.enterprise.event.Event<Object> cdiEventMachinery = beanManager.getEvent();
         assert cdiEventMachinery != null;
-        final TypeLiteral<org.microbean.kubernetes.controller.Event<? extends T>> eventTypeLiteral = new TypeLiteral<org.microbean.kubernetes.controller.Event<? extends T>>() {
+        final TypeLiteral<AbstractEvent<? extends T>> eventTypeLiteral = new TypeLiteral<AbstractEvent<? extends T>>() {
             private static final long serialVersionUID = 1L;
           };
-        final javax.enterprise.event.Event<org.microbean.kubernetes.controller.Event<? extends T>> broadcaster = cdiEventMachinery.select(eventTypeLiteral, this.qualifiers);
+        final javax.enterprise.event.Event<AbstractEvent<? extends T>> broadcaster = cdiEventMachinery.select(eventTypeLiteral, this.qualifiers);
         assert broadcaster != null;
+        // TODO: we may actually want to do a straight fire here
+        // instead of fireAsync, since we're already off the main
+        // container thread
         if (this.notificationOptions == null) {
           broadcaster.fireAsync(controllerEvent);
         } else {
