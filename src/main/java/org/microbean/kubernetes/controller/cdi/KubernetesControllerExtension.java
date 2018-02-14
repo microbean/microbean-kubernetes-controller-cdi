@@ -106,6 +106,10 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
   private final Set<Bean<?>> beans;
 
+  private boolean asyncNeeded;
+
+  private boolean syncNeeded;
+  
   /**
    * A {@link Logger} for use by this {@link KubernetesControllerExtension}.
    *
@@ -201,9 +205,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
+    
     if (event != null) {
       this.processPotentialEventSelectorBean(event.getBean(), beanManager);
     }
+    
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -237,9 +243,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
+    
     if (event != null) {
       this.processPotentialEventSelectorBean(event.getBean(), beanManager);
     }
+    
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -273,9 +281,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
+    
     if (event != null) {
       this.processPotentialEventSelectorBean(event.getBean(), beanManager);
     }
+    
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -307,9 +317,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
+    
     if (event != null) {
       this.processPotentialEventSelectorBean(event.getBean(), beanManager);
     }
+    
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -340,9 +352,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
+    
     if (event != null) {
       this.processPotentialEventSelectorObserverMethod(event.getObserverMethod(), beanManager);
     }
+
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -373,9 +387,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
+    
     if (event != null) {
       this.processPotentialEventSelectorObserverMethod(event.getObserverMethod(), beanManager);
     }
+
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -397,6 +413,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, event);
     }
+
     if (event != null) {
       synchronized (this.eventSelectorBeans) {
         this.eventSelectorBeans.clear();
@@ -405,6 +422,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       // beans here out of other bean raw materials
       // (e.g. appropriately-qualified knownObjects etc.).
     }
+
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -443,38 +461,31 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { ignored, beanManager });
     }
+    
     if (beanManager != null) {
-      
-      // Go through all the beans we have
+
       synchronized (this.beans) {
         for (final Bean<?> bean : this.beans) {
           assert bean != null;
           
-          final Type operationType = getOperationType(bean);
-          assert operationType != null;
-          
-          @SuppressWarnings("unchecked") // we know an Operation is of type X
-          final X contextualReference = (X)beanManager.getReference(bean, operationType, beanManager.createCreationalContext(bean));
-          
-          final Map<Object, T> knownObjects = new HashMap<>();
-
           final Set<Annotation> qualifiers = bean.getQualifiers();
 
-          final Set<Bean<?>> notificationOptionsBeans = beanManager.getBeans(NotificationOptions.class, qualifiers.toArray(new Annotation[qualifiers.size()]));
-
-          final Bean<?> notificationOptionsBean = beanManager.resolve(notificationOptionsBeans);
+          final Map<Object, T> knownObjects = new HashMap<>();
+          
+          final EventDistributor<T> eventDistributor = new EventDistributor<>(knownObjects);
 
           final NotificationOptions notificationOptions;
+          final Bean<?> notificationOptionsBean = beanManager.resolve(beanManager.getBeans(NotificationOptions.class, qualifiers.toArray(new Annotation[qualifiers.size()])));
           if (notificationOptionsBean == null) {
             notificationOptions = null;
           } else {
             notificationOptions = (NotificationOptions)beanManager.getReference(notificationOptionsBean, NotificationOptions.class, beanManager.createCreationalContext(notificationOptionsBean));
           }
-          
-          final Consumer<AbstractEvent<? extends T>> cdiEventDistributor = new CDIEventDistributor<T>(qualifiers, notificationOptions);
 
-          final EventDistributor<T> eventDistributor = new EventDistributor<>(knownObjects);
-          eventDistributor.addConsumer(cdiEventDistributor);
+          eventDistributor.addConsumer(new CDIEventDistributor<T>(qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
+
+          @SuppressWarnings("unchecked") // we know an Operation is of type X
+          final X contextualReference = (X)beanManager.getReference(bean, getOperationType(bean), beanManager.createCreationalContext(bean));
           
           final Controller<T> controller = new Controller<>(contextualReference, knownObjects, eventDistributor);
           controller.start();
@@ -485,6 +496,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
 
     }
+    
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -531,7 +543,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
 
     // TODO: go through all the CDI event broadcasters and close them
-    // too; we don't currently keep track of them
+    // too; we don't currently keep track of them.
 
     
     if (exception instanceof IOException) {
@@ -578,6 +590,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { bean, beanManager });
     }
+
     if (bean != null) {
       final Type operationType = getOperationType(bean);
       if (operationType != null) {
@@ -589,6 +602,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         }
       }
     }
+
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -620,9 +634,17 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, observerMethod);
     }
+
     if (observerMethod != null) {
       final Set<Annotation> kubernetesEventSelectors = Annotations.retainAnnotationsQualifiedWith(observerMethod.getObservedQualifiers(), KubernetesEventSelector.class, beanManager);
       if (kubernetesEventSelectors != null && !kubernetesEventSelectors.isEmpty()) {
+        if (observerMethod.isAsync()) {
+          if (!this.asyncNeeded) {
+            this.asyncNeeded = true;
+          }
+        } else if (!this.syncNeeded) {
+          this.syncNeeded = true;
+        }
         final Bean<?> bean;
         synchronized (this.eventSelectorBeans) {
           bean = this.eventSelectorBeans.remove(kubernetesEventSelectors);
@@ -632,6 +654,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         }
       }
     }
+
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn, observerMethod);
     }
@@ -672,6 +695,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (logger.isLoggable(Level.FINER)) {
       logger.entering(cn, mn, bean);
     }
+    
     final Type returnValue;
     if (bean == null) {
       returnValue = null;
@@ -691,6 +715,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
       returnValue = candidate;
     }
+    
     if (logger.isLoggable(Level.FINER)) {
       logger.exiting(cn, mn, returnValue);
     }
@@ -711,23 +736,31 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
     private final NotificationOptions notificationOptions;
 
+    private final boolean syncNeeded;
+
+    private final boolean asyncNeeded;
+
     private final Logger logger;
     
-    private CDIEventDistributor(final Set<Annotation> qualifiers, final NotificationOptions notificationOptions) {
+    private CDIEventDistributor(final Set<Annotation> qualifiers, final NotificationOptions notificationOptions, final boolean syncNeeded, final boolean asyncNeeded) {
       super();
       final String cn = this.getClass().getName();      
       this.logger = Logger.getLogger(cn);
       assert this.logger != null;
       final String mn = "<init>";
       if (this.logger.isLoggable(Level.FINER)) {
-        this.logger.entering(cn, mn, new Object[] { qualifiers, notificationOptions });
+        this.logger.entering(cn, mn, new Object[] { qualifiers, notificationOptions, Boolean.valueOf(syncNeeded), Boolean.valueOf(asyncNeeded) });
       }
+
       if (qualifiers == null) {
         this.qualifiers = EMPTY_ANNOTATION_ARRAY;
       } else {
         this.qualifiers = qualifiers.toArray(new Annotation[qualifiers.size()]);
       }
       this.notificationOptions = notificationOptions;
+      this.syncNeeded = syncNeeded;
+      this.asyncNeeded = asyncNeeded;
+
       if (this.logger.isLoggable(Level.FINER)) {
         this.logger.exiting(cn, mn);
       }
@@ -740,8 +773,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       if (this.logger.isLoggable(Level.FINER)) {
         this.logger.entering(cn, mn, controllerEvent);
       }
-      if (controllerEvent != null) {
-        // TODO: I'm sure there's a more clean way to do all this.
+
+      if (controllerEvent != null && (this.syncNeeded || this.asyncNeeded)) {
         final BeanManager beanManager = CDI.current().getBeanManager();
         assert beanManager != null;
         final javax.enterprise.event.Event<Object> cdiEventMachinery = beanManager.getEvent();
@@ -751,15 +784,18 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           };
         final javax.enterprise.event.Event<AbstractEvent<? extends T>> broadcaster = cdiEventMachinery.select(eventTypeLiteral, this.qualifiers);
         assert broadcaster != null;
-        // TODO: we may actually want to do a straight fire here
-        // instead of fireAsync, since we're already off the main
-        // container thread
-        if (this.notificationOptions == null) {
-          broadcaster.fireAsync(controllerEvent);
-        } else {
-          broadcaster.fireAsync(controllerEvent, this.notificationOptions);
+        if (this.asyncNeeded) {
+          if (this.notificationOptions == null) {
+            broadcaster.fireAsync(controllerEvent);
+          } else {
+            broadcaster.fireAsync(controllerEvent, this.notificationOptions);
+          }
+        }
+        if (this.syncNeeded) {
+          broadcaster.fire(controllerEvent);
         }
       }
+
       if (this.logger.isLoggable(Level.FINER)) {
         this.logger.exiting(cn, mn);
       }

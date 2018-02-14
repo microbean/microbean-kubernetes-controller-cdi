@@ -63,7 +63,7 @@
       <dependency>
         <groupId>org.glassfish</groupId>
         <artifactId>javax.el</artifactId>
-        <version>3.0.1-b08</version>
+        <version>3.0.1-b09</version>
         <type>jar</type>
       </dependency>
 
@@ -77,7 +77,7 @@
       <dependency>
         <groupId>org.jboss.weld</groupId>
         <artifactId>weld-core-bom</artifactId>
-        <version>3.0.2.Final</version>
+        <version>3.0.3.Final</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -113,7 +113,7 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-kubernetes-controller</artifactId>
-        <version>0.0.3-SNAPSHOT</version>
+        <version>0.0.3</version>
         <type>jar</type>
       </dependency>
 
