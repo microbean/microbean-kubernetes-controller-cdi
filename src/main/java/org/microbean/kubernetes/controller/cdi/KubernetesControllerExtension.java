@@ -24,11 +24,14 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
+import java.time.Duration;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import java.util.concurrent.CountDownLatch;
@@ -51,6 +54,7 @@ import javax.enterprise.inject.spi.AfterBeanDiscovery;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
+import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ObserverMethod;
 import javax.enterprise.inject.spi.ProcessManagedBean;
 import javax.enterprise.inject.spi.ProcessObserverMethod;
@@ -72,6 +76,8 @@ import io.fabric8.kubernetes.client.dsl.Operation;
 
 import org.microbean.cdi.AbstractBlockingExtension;
 import org.microbean.cdi.Annotations;
+
+import org.microbean.configuration.api.Configurations;
 
 import org.microbean.kubernetes.controller.AbstractEvent;
 import org.microbean.kubernetes.controller.Controller;
@@ -104,11 +110,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   
   private final Map<Set<Annotation>, Bean<?>> eventSelectorBeans;
 
-  private final Set<Bean<?>> beans;
+  final Set<Bean<?>> beans;
 
-  private boolean asyncNeeded;
+  boolean asyncNeeded;
 
-  private boolean syncNeeded;
+  boolean syncNeeded;
   
   /**
    * A {@link Logger} for use by this {@link KubernetesControllerExtension}.
@@ -152,9 +158,17 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger == null) {
       throw new IllegalStateException("createLogger() == null");
     }
+    final String cn = this.getClass().getName();
+    final String mn = "<init>";
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.entering(cn, mn, latch);
+    }
     this.eventSelectorBeans = new HashMap<>();
     this.beans = new HashSet<>();
     this.controllers = new ArrayList<>();
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.exiting(cn, mn);
+    }
   }
 
 
@@ -346,7 +360,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    */
   // Observer method processors are guaranteed by the specification to
   // be invoked after ProcessBean events.
-  private final void processObserverMethod(@Observes final ProcessObserverMethod<? extends org.microbean.kubernetes.controller.Event<? extends HasMetadata>, ?> event, final BeanManager beanManager) {
+  private final void processObserverMethod(@Observes final ProcessObserverMethod<? extends org.microbean.kubernetes.controller.AbstractEvent<? extends HasMetadata>, ?> event, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -381,7 +395,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    */
   // Observer method processors are guaranteed by the specification to
   // be invoked after ProcessBean events.
-  private final void processSyntheticObserverMethod(@Observes final ProcessSyntheticObserverMethod<? extends org.microbean.kubernetes.controller.Event<? extends HasMetadata>, ?> event, final BeanManager beanManager) {
+  private final void processSyntheticObserverMethod(@Observes final ProcessSyntheticObserverMethod<? extends org.microbean.kubernetes.controller.AbstractEvent<? extends HasMetadata>, ?> event, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processSyntheticObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -415,9 +429,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
 
     if (event != null) {
-      synchronized (this.eventSelectorBeans) {
-        this.eventSelectorBeans.clear();
-      }
+      this.eventSelectorBeans.clear();
       // TODO: consider: we have the ability to create Controller
       // beans here out of other bean raw materials
       // (e.g. appropriately-qualified knownObjects etc.).
@@ -462,39 +474,41 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       this.logger.entering(cn, mn, new Object[] { ignored, beanManager });
     }
     
-    if (beanManager != null) {
+    if (beanManager != null && !this.beans.isEmpty()) {
 
-      synchronized (this.beans) {
-        for (final Bean<?> bean : this.beans) {
-          assert bean != null;
-          
-          final Set<Annotation> qualifiers = bean.getQualifiers();
+      // We can't just put Configurations in our parameter list above,
+      // because according to the specification that will result in
+      // non-portable behavior.
+      final Bean<?> configurationsBean = beanManager.resolve(beanManager.getBeans(Configurations.class));
+      assert configurationsBean != null;
+      final Configurations configurations = (Configurations)beanManager.getReference(configurationsBean, Configurations.class, beanManager.createCreationalContext(configurationsBean));
+      assert configurations != null;
 
-          final Map<Object, T> knownObjects = new HashMap<>();
-          
-          final EventDistributor<T> eventDistributor = new EventDistributor<>(knownObjects);
+      final Duration synchronizationInterval = configurations.getValue("synchronizationInterval", Duration.class);
 
-          final NotificationOptions notificationOptions;
-          final Bean<?> notificationOptionsBean = beanManager.resolve(beanManager.getBeans(NotificationOptions.class, qualifiers.toArray(new Annotation[qualifiers.size()])));
-          if (notificationOptionsBean == null) {
-            notificationOptions = null;
-          } else {
-            notificationOptions = (NotificationOptions)beanManager.getReference(notificationOptionsBean, NotificationOptions.class, beanManager.createCreationalContext(notificationOptionsBean));
-          }
-
-          eventDistributor.addConsumer(new CDIEventDistributor<T>(qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
-
-          @SuppressWarnings("unchecked") // we know an Operation is of type X
-          final X contextualReference = (X)beanManager.getReference(bean, getOperationType(bean), beanManager.createCreationalContext(bean));
-          
-          final Controller<T> controller = new Controller<>(contextualReference, knownObjects, eventDistributor);
-          controller.start();
-          synchronized (this.controllers) {
-            this.controllers.add(controller);
-          }
+      for (final Bean<?> bean : this.beans) {
+        assert bean != null;
+        
+        final Set<Annotation> qualifiers = bean.getQualifiers();
+        
+        final NotificationOptions notificationOptions;
+        final Bean<?> notificationOptionsBean = beanManager.resolve(beanManager.getBeans(NotificationOptions.class, qualifiers.toArray(new Annotation[qualifiers.size()])));
+        if (notificationOptionsBean == null) {
+          notificationOptions = null;
+        } else {
+          notificationOptions = (NotificationOptions)beanManager.getReference(notificationOptionsBean, NotificationOptions.class, beanManager.createCreationalContext(notificationOptionsBean));
         }
-      }
+        
+        @SuppressWarnings("unchecked") // we know an Operation is of type X
+        final X contextualReference = (X)beanManager.getReference(bean, getOperationType(bean), beanManager.createCreationalContext(bean));
 
+        final Controller<T> controller = new CDIController<>(contextualReference, synchronizationInterval, new HashMap<>(), new CDIEventDistributor<>(qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
+        if (this.logger.isLoggable(Level.INFO)) {
+          this.logger.logp(Level.INFO, cn, mn, "Starting {0}", controller);
+        }
+        controller.start();
+        this.controllers.add(controller);
+      }
     }
     
     if (this.logger.isLoggable(Level.FINER)) {
@@ -533,7 +547,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         try {
           controller.close();
         } catch (final IOException | RuntimeException closeException) {
-          if (closeException == null) {
+          if (exception == null) {
             exception = closeException;
           } else {
             exception.addSuppressed(closeException);
@@ -542,10 +556,6 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
     }
 
-    // TODO: go through all the CDI event broadcasters and close them
-    // too; we don't currently keep track of them.
-
-    
     if (exception instanceof IOException) {
       throw (IOException)exception;
     } else if (exception instanceof RuntimeException) {
@@ -628,7 +638,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    *
    * @see KubernetesEventSelector
    */
-  private final void processPotentialEventSelectorObserverMethod(final ObserverMethod<? extends org.microbean.kubernetes.controller.Event<? extends HasMetadata>> observerMethod, final BeanManager beanManager) {
+  private final void processPotentialEventSelectorObserverMethod(final ObserverMethod<? extends org.microbean.kubernetes.controller.AbstractEvent<? extends HasMetadata>> observerMethod, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processPotentialEventSelectorObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -727,6 +737,49 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * Inner and nested classes.
    */
 
+
+  private static final class CDIController<T extends HasMetadata> extends Controller<T> {
+
+    private final EventDistributor<T> eventDistributor;
+
+    private final boolean close;
+
+    @SuppressWarnings("rawtypes")
+    private <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<T>>> CDIController(final X operation,
+                                                                                                                                     final Duration synchronizationInterval,
+                                                                                                                                     final Map<Object, T> knownObjects,
+                                                                                                                                     final CDIEventDistributor<T> eventDistributor) {
+      this(operation, synchronizationInterval, knownObjects, new EventDistributor<>(knownObjects), true);
+      assert this.eventDistributor != null;
+      if (eventDistributor != null) {
+        this.eventDistributor.addConsumer(eventDistributor);
+      }      
+    }
+    
+    @SuppressWarnings("rawtypes")
+    private <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<T>>> CDIController(final X operation,
+                                                                                                                                     final Duration synchronizationInterval,
+                                                                                                                                     final Map<Object, T> knownObjects,
+                                                                                                                                     final EventDistributor<T> siphon,
+                                                                                                                                     final boolean close) {
+      super(operation, synchronizationInterval, knownObjects, siphon);
+      this.eventDistributor = Objects.requireNonNull(siphon);
+      this.close = close;
+    }
+
+    @Override
+    protected final boolean shouldSynchronize() {
+      return this.eventDistributor.shouldSynchronize();
+    }
+
+    @Override
+    protected final void onClose() {
+      if (this.close) {
+        this.eventDistributor.close();
+      }
+    }
+    
+  }
   
   private static final class CDIEventDistributor<T extends HasMetadata> implements Consumer<AbstractEvent<? extends T>> {
 

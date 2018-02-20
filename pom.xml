@@ -92,7 +92,7 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-configuration</artifactId>
-        <version>0.2.0</version>
+        <version>0.2.1</version>
         <type>jar</type>
       </dependency>
       
@@ -106,14 +106,14 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-kubernetes-client-cdi</artifactId>
-        <version>0.2.0</version>
+        <version>0.2.1</version>
         <type>jar</type>
       </dependency>
 
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-kubernetes-controller</artifactId>
-        <version>0.0.3</version>
+        <version>0.0.5</version>
         <type>jar</type>
       </dependency>
 
@@ -385,11 +385,6 @@
     <plugins>
       <plugin>
         <artifactId>maven-javadoc-plugin</artifactId>
-        <!--
-        <configuration>
-          <doclint>-missing</doclint>
-        </configuration>
-        -->
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
