@@ -47,7 +47,7 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-base-specification</artifactId>
-        <version>0.1.1</version>
+        <version>0.3.1</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -55,7 +55,7 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-weld-se-environment</artifactId>
-        <version>0.1.2</version>
+        <version>0.3.1</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -93,14 +93,14 @@
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-cdi</artifactId>
-        <version>0.3.3</version>
+        <version>0.4.1</version>
         <type>jar</type>
       </dependency>
 
       <dependency>
         <groupId>org.microbean</groupId>
         <artifactId>microbean-kubernetes-client-cdi</artifactId>
-        <version>0.2.2</version>
+        <version>0.3.1</version>
         <type>jar</type>
       </dependency>
 
