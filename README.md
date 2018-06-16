@@ -1,5 +1,8 @@
 # microBean Kubernetes Controller CDI
 
+[![Build Status](https://travis-ci.org/microbean/microbean-kubernetes-controller-cdi.svg?branch=master)](https://travis-ci.org/microbean/microbean-kubernetes-controller-cdi)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.microbean/microbean-kubernetes-controller-cdi/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.microbean/microbean-kubernetes-controller-cdi)
+
 The microBean Kubernetes Controller CDI project helps you write
 Kubernetes [controllers][kubernetes-controllers] declaratively in
 terms of [CDI][cdi] [events][cdi-events].

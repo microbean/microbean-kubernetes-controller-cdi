@@ -72,7 +72,7 @@ import io.fabric8.kubernetes.client.Watcher;
 
 import io.fabric8.kubernetes.client.dsl.Listable;
 import io.fabric8.kubernetes.client.dsl.VersionWatchable;
-import io.fabric8.kubernetes.client.dsl.Operation;
+import io.fabric8.kubernetes.client.dsl.Operation; // for javadoc only
 
 import org.microbean.cdi.AbstractBlockingExtension;
 import org.microbean.cdi.Annotations;
@@ -500,7 +500,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         }
         
         @SuppressWarnings("unchecked") // we know an Operation is of type X
-        final X contextualReference = (X)beanManager.getReference(bean, getOperationType(bean), beanManager.createCreationalContext(bean));
+        final X contextualReference = (X)beanManager.getReference(bean, getListableVersionWatchableType(bean), beanManager.createCreationalContext(bean));
 
         final Controller<T> controller = new CDIController<>(contextualReference, synchronizationInterval, new HashMap<>(), new CDIEventDistributor<>(qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
         if (this.logger.isLoggable(Level.INFO)) {
@@ -602,8 +602,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
 
     if (bean != null) {
-      final Type operationType = getOperationType(bean);
-      if (operationType != null) {
+      final Type listableVersionWatchableType = getListableVersionWatchableType(bean);
+      if (listableVersionWatchableType != null) {
         final Set<Annotation> kubernetesEventSelectors = Annotations.retainAnnotationsQualifiedWith(bean.getQualifiers(), KubernetesEventSelector.class, beanManager);
         if (kubernetesEventSelectors != null && !kubernetesEventSelectors.isEmpty()) {
           synchronized (this.eventSelectorBeans) {
@@ -677,31 +677,37 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
 
   /**
-   * A bit of a hack to return the {@link Type} equivalent of {@link
-   * Operation Operation.class} from the supplied {@link Bean}'s
-   * {@linkplain Bean#getTypes() types}, if it is present among them,
-   * and to return {@code null} otherwise.
+   * A bit of a hack to return the {@link Type} that is the "right
+   * kind" of {@link Listable} and {@link VersionWatchable}
+   * implementation from the supplied {@link Bean}'s {@linkplain
+   * Bean#getTypes() types}, if it is present among them, and to
+   * return {@code null} otherwise.
    *
    * <p>This method may return {@code null}.</p>
    *
    * <p>{@link Operation Operation.class} is the most general
    * interface that implements both {@link Listable} and {@link
    * VersionWatchable}, which is a common constraint for {@link
-   * Controller} operations.</p>
+   * Controller} operations, and is often what this method returns in
+   * {@link ParameterizedType} form.</p>
    *
    * @param bean the {@link Bean} to inspect; may be {@code null} in
    * which case {@code null} will be returned
    *
-   * @return a {@link Type} equal to {@link Operation
-   * Operation.class}, or {@code null}
+   * @return a {@link Type} that is both {@link Listable} and {@link
+   * VersionWatchable}, or {@code null}
    *
    * @see Operation
+   *
+   * @see Listable
+   *
+   * @see VersionWatchable
    */
-  private static final Type getOperationType(final Bean<?> bean) {
+  private static final Type getListableVersionWatchableType(final Bean<?> bean) {
     final String cn = KubernetesControllerExtension.class.getName();
     final Logger logger = Logger.getLogger(cn);
     assert logger != null;
-    final String mn = "getOperationType";
+    final String mn = "getListableVersionWatchableType";
     if (logger.isLoggable(Level.FINER)) {
       logger.entering(cn, mn, bean);
     }
@@ -710,22 +716,68 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (bean == null) {
       returnValue = null;
     } else {
-      final Set<Type> beanTypes = bean.getTypes();
-      assert beanTypes != null;
-      assert !beanTypes.isEmpty();
+      returnValue = getListableVersionWatchableType(bean.getTypes());
+    }
+    
+    if (logger.isLoggable(Level.FINER)) {
+      logger.exiting(cn, mn, returnValue);
+    }
+    return returnValue;
+  }
+
+  private static final Type getListableVersionWatchableType(final Collection<? extends Type> beanTypes) {
+    final String cn = KubernetesControllerExtension.class.getName();
+    final Logger logger = Logger.getLogger(cn);
+    assert logger != null;
+    final String mn = "getListableVersionWatchableType";
+    if (logger.isLoggable(Level.FINER)) {
+      logger.entering(cn, mn, beanTypes);
+    }
+
+    final Type returnValue;
+    if (beanTypes == null || beanTypes.isEmpty()) {
+      returnValue = null;
+    } else {
       Type candidate = null;
       for (final Type beanType : beanTypes) {
         if (beanType instanceof ParameterizedType) {
-          final Type rawType = ((ParameterizedType)beanType).getRawType();
-          if (rawType instanceof Class && Operation.class.equals((Class<?>)rawType)) {
-            candidate = beanType;
+          candidate = getListableVersionWatchableType((ParameterizedType)beanType);
+          if (candidate != null) {
             break;
           }
         }
       }
       returnValue = candidate;
     }
+
+    if (logger.isLoggable(Level.FINER)) {
+      logger.exiting(cn, mn, returnValue);
+    }
+    return returnValue;
+  }
+
+  private static final Type getListableVersionWatchableType(final ParameterizedType type) {
+    final String cn = KubernetesControllerExtension.class.getName();
+    final Logger logger = Logger.getLogger(cn);
+    assert logger != null;
+    final String mn = "getListableVersionWatchableType";
+    if (logger.isLoggable(Level.FINER)) {
+      logger.entering(cn, mn, type);
+    }
+
+    Type candidate = null;
+    final Type rawType = type.getRawType();
+    if (rawType instanceof Class) {
+      // This should always be the case; see e.g. https://stackoverflow.com/a/5767681/208288
+      final Class<?> rawClass = (Class<?>)rawType;
+      if (Listable.class.isAssignableFrom(rawClass) && VersionWatchable.class.isAssignableFrom(rawClass)) {
+        // TODO: check type parameters
+        candidate = type;
+      }
+    }
     
+    final Type returnValue = candidate;
+
     if (logger.isLoggable(Level.FINER)) {
       logger.exiting(cn, mn, returnValue);
     }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.1.xsd">
+  <suppress>
+    <notes><![CDATA[
+    file name: javax.el-api-3.0.1-b04.jar
+    ]]></notes>
+    <gav regex="true">^javax\.el:javax\.el-api:.*$</gav>
+    <cpe>cpe:/a:oracle:glassfish</cpe>
+  </suppress>
+  <suppress>
+    <notes><![CDATA[
+    file name: kubernetes-client-3.2.0.jar
+    ]]></notes>
+    <gav regex="true">^io\.fabric8:kubernetes-client:.*$</gav>
+    <cpe>cpe:/a:kubernetes:kubernetes</cpe>
+  </suppress>
+  <suppress>
+    <notes><![CDATA[
+    file name: microbean-kubernetes-client-cdi-0.3.1.jar
+    ]]></notes>
+    <gav regex="true">^org\.microbean:microbean-kubernetes-client-cdi:.*$</gav>
+    <cpe>cpe:/a:kubernetes:kubernetes</cpe>
+  </suppress>
+  <suppress>
+    <notes><![CDATA[
+    file name: microbean-kubernetes-controller-0.0.9.jar
+    ]]></notes>
+    <gav regex="true">^org\.microbean:microbean-kubernetes-controller:.*$</gav>
+    <cpe>cpe:/a:kubernetes:kubernetes</cpe>
+  </suppress>
+</suppressions>
