@@ -80,7 +80,7 @@
 <span class="sourceLineNo">072</span><a name="line.72"></a>
 <span class="sourceLineNo">073</span>import io.fabric8.kubernetes.client.dsl.Listable;<a name="line.73"></a>
 <span class="sourceLineNo">074</span>import io.fabric8.kubernetes.client.dsl.VersionWatchable;<a name="line.74"></a>
-<span class="sourceLineNo">075</span>import io.fabric8.kubernetes.client.dsl.Operation;<a name="line.75"></a>
+<span class="sourceLineNo">075</span>import io.fabric8.kubernetes.client.dsl.Operation; // for javadoc only<a name="line.75"></a>
 <span class="sourceLineNo">076</span><a name="line.76"></a>
 <span class="sourceLineNo">077</span>import org.microbean.cdi.AbstractBlockingExtension;<a name="line.77"></a>
 <span class="sourceLineNo">078</span>import org.microbean.cdi.Annotations;<a name="line.78"></a>
@@ -508,7 +508,7 @@
 <span class="sourceLineNo">500</span>        }<a name="line.500"></a>
 <span class="sourceLineNo">501</span>        <a name="line.501"></a>
 <span class="sourceLineNo">502</span>        @SuppressWarnings("unchecked") // we know an Operation is of type X<a name="line.502"></a>
-<span class="sourceLineNo">503</span>        final X contextualReference = (X)beanManager.getReference(bean, getOperationType(bean), beanManager.createCreationalContext(bean));<a name="line.503"></a>
+<span class="sourceLineNo">503</span>        final X contextualReference = (X)beanManager.getReference(bean, getListableVersionWatchableType(bean), beanManager.createCreationalContext(bean));<a name="line.503"></a>
 <span class="sourceLineNo">504</span><a name="line.504"></a>
 <span class="sourceLineNo">505</span>        final Controller&lt;T&gt; controller = new CDIController&lt;&gt;(contextualReference, synchronizationInterval, new HashMap&lt;&gt;(), new CDIEventDistributor&lt;&gt;(qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));<a name="line.505"></a>
 <span class="sourceLineNo">506</span>        if (this.logger.isLoggable(Level.INFO)) {<a name="line.506"></a>
@@ -610,8 +610,8 @@
 <span class="sourceLineNo">602</span>    }<a name="line.602"></a>
 <span class="sourceLineNo">603</span><a name="line.603"></a>
 <span class="sourceLineNo">604</span>    if (bean != null) {<a name="line.604"></a>
-<span class="sourceLineNo">605</span>      final Type operationType = getOperationType(bean);<a name="line.605"></a>
-<span class="sourceLineNo">606</span>      if (operationType != null) {<a name="line.606"></a>
+<span class="sourceLineNo">605</span>      final Type listableVersionWatchableType = getListableVersionWatchableType(bean);<a name="line.605"></a>
+<span class="sourceLineNo">606</span>      if (listableVersionWatchableType != null) {<a name="line.606"></a>
 <span class="sourceLineNo">607</span>        final Set&lt;Annotation&gt; kubernetesEventSelectors = Annotations.retainAnnotationsQualifiedWith(bean.getQualifiers(), KubernetesEventSelector.class, beanManager);<a name="line.607"></a>
 <span class="sourceLineNo">608</span>        if (kubernetesEventSelectors != null &amp;&amp; !kubernetesEventSelectors.isEmpty()) {<a name="line.608"></a>
 <span class="sourceLineNo">609</span>          synchronized (this.eventSelectorBeans) {<a name="line.609"></a>
@@ -685,186 +685,238 @@
 <span class="sourceLineNo">677</span><a name="line.677"></a>
 <span class="sourceLineNo">678</span><a name="line.678"></a>
 <span class="sourceLineNo">679</span>  /**<a name="line.679"></a>
-<span class="sourceLineNo">680</span>   * A bit of a hack to return the {@link Type} equivalent of {@link<a name="line.680"></a>
-<span class="sourceLineNo">681</span>   * Operation Operation.class} from the supplied {@link Bean}'s<a name="line.681"></a>
-<span class="sourceLineNo">682</span>   * {@linkplain Bean#getTypes() types}, if it is present among them,<a name="line.682"></a>
-<span class="sourceLineNo">683</span>   * and to return {@code null} otherwise.<a name="line.683"></a>
-<span class="sourceLineNo">684</span>   *<a name="line.684"></a>
-<span class="sourceLineNo">685</span>   * &lt;p&gt;This method may return {@code null}.&lt;/p&gt;<a name="line.685"></a>
-<span class="sourceLineNo">686</span>   *<a name="line.686"></a>
-<span class="sourceLineNo">687</span>   * &lt;p&gt;{@link Operation Operation.class} is the most general<a name="line.687"></a>
-<span class="sourceLineNo">688</span>   * interface that implements both {@link Listable} and {@link<a name="line.688"></a>
-<span class="sourceLineNo">689</span>   * VersionWatchable}, which is a common constraint for {@link<a name="line.689"></a>
-<span class="sourceLineNo">690</span>   * Controller} operations.&lt;/p&gt;<a name="line.690"></a>
-<span class="sourceLineNo">691</span>   *<a name="line.691"></a>
-<span class="sourceLineNo">692</span>   * @param bean the {@link Bean} to inspect; may be {@code null} in<a name="line.692"></a>
-<span class="sourceLineNo">693</span>   * which case {@code null} will be returned<a name="line.693"></a>
-<span class="sourceLineNo">694</span>   *<a name="line.694"></a>
-<span class="sourceLineNo">695</span>   * @return a {@link Type} equal to {@link Operation<a name="line.695"></a>
-<span class="sourceLineNo">696</span>   * Operation.class}, or {@code null}<a name="line.696"></a>
-<span class="sourceLineNo">697</span>   *<a name="line.697"></a>
-<span class="sourceLineNo">698</span>   * @see Operation<a name="line.698"></a>
-<span class="sourceLineNo">699</span>   */<a name="line.699"></a>
-<span class="sourceLineNo">700</span>  private static final Type getOperationType(final Bean&lt;?&gt; bean) {<a name="line.700"></a>
-<span class="sourceLineNo">701</span>    final String cn = KubernetesControllerExtension.class.getName();<a name="line.701"></a>
-<span class="sourceLineNo">702</span>    final Logger logger = Logger.getLogger(cn);<a name="line.702"></a>
-<span class="sourceLineNo">703</span>    assert logger != null;<a name="line.703"></a>
-<span class="sourceLineNo">704</span>    final String mn = "getOperationType";<a name="line.704"></a>
-<span class="sourceLineNo">705</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.705"></a>
-<span class="sourceLineNo">706</span>      logger.entering(cn, mn, bean);<a name="line.706"></a>
-<span class="sourceLineNo">707</span>    }<a name="line.707"></a>
-<span class="sourceLineNo">708</span>    <a name="line.708"></a>
-<span class="sourceLineNo">709</span>    final Type returnValue;<a name="line.709"></a>
-<span class="sourceLineNo">710</span>    if (bean == null) {<a name="line.710"></a>
-<span class="sourceLineNo">711</span>      returnValue = null;<a name="line.711"></a>
-<span class="sourceLineNo">712</span>    } else {<a name="line.712"></a>
-<span class="sourceLineNo">713</span>      final Set&lt;Type&gt; beanTypes = bean.getTypes();<a name="line.713"></a>
-<span class="sourceLineNo">714</span>      assert beanTypes != null;<a name="line.714"></a>
-<span class="sourceLineNo">715</span>      assert !beanTypes.isEmpty();<a name="line.715"></a>
-<span class="sourceLineNo">716</span>      Type candidate = null;<a name="line.716"></a>
-<span class="sourceLineNo">717</span>      for (final Type beanType : beanTypes) {<a name="line.717"></a>
-<span class="sourceLineNo">718</span>        if (beanType instanceof ParameterizedType) {<a name="line.718"></a>
-<span class="sourceLineNo">719</span>          final Type rawType = ((ParameterizedType)beanType).getRawType();<a name="line.719"></a>
-<span class="sourceLineNo">720</span>          if (rawType instanceof Class &amp;&amp; Operation.class.equals((Class&lt;?&gt;)rawType)) {<a name="line.720"></a>
-<span class="sourceLineNo">721</span>            candidate = beanType;<a name="line.721"></a>
-<span class="sourceLineNo">722</span>            break;<a name="line.722"></a>
-<span class="sourceLineNo">723</span>          }<a name="line.723"></a>
-<span class="sourceLineNo">724</span>        }<a name="line.724"></a>
-<span class="sourceLineNo">725</span>      }<a name="line.725"></a>
-<span class="sourceLineNo">726</span>      returnValue = candidate;<a name="line.726"></a>
-<span class="sourceLineNo">727</span>    }<a name="line.727"></a>
-<span class="sourceLineNo">728</span>    <a name="line.728"></a>
-<span class="sourceLineNo">729</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.729"></a>
-<span class="sourceLineNo">730</span>      logger.exiting(cn, mn, returnValue);<a name="line.730"></a>
-<span class="sourceLineNo">731</span>    }<a name="line.731"></a>
-<span class="sourceLineNo">732</span>    return returnValue;<a name="line.732"></a>
-<span class="sourceLineNo">733</span>  }<a name="line.733"></a>
-<span class="sourceLineNo">734</span><a name="line.734"></a>
-<span class="sourceLineNo">735</span><a name="line.735"></a>
-<span class="sourceLineNo">736</span>  /*<a name="line.736"></a>
-<span class="sourceLineNo">737</span>   * Inner and nested classes.<a name="line.737"></a>
-<span class="sourceLineNo">738</span>   */<a name="line.738"></a>
-<span class="sourceLineNo">739</span><a name="line.739"></a>
-<span class="sourceLineNo">740</span><a name="line.740"></a>
-<span class="sourceLineNo">741</span>  private static final class CDIController&lt;T extends HasMetadata&gt; extends Controller&lt;T&gt; {<a name="line.741"></a>
-<span class="sourceLineNo">742</span><a name="line.742"></a>
-<span class="sourceLineNo">743</span>    private final EventDistributor&lt;T&gt; eventDistributor;<a name="line.743"></a>
-<span class="sourceLineNo">744</span><a name="line.744"></a>
-<span class="sourceLineNo">745</span>    private final boolean close;<a name="line.745"></a>
-<span class="sourceLineNo">746</span><a name="line.746"></a>
-<span class="sourceLineNo">747</span>    @SuppressWarnings("rawtypes")<a name="line.747"></a>
-<span class="sourceLineNo">748</span>    private &lt;X extends Listable&lt;? extends KubernetesResourceList&gt; &amp; VersionWatchable&lt;? extends Closeable, Watcher&lt;T&gt;&gt;&gt; CDIController(final X operation,<a name="line.748"></a>
-<span class="sourceLineNo">749</span>                                                                                                                                     final Duration synchronizationInterval,<a name="line.749"></a>
-<span class="sourceLineNo">750</span>                                                                                                                                     final Map&lt;Object, T&gt; knownObjects,<a name="line.750"></a>
-<span class="sourceLineNo">751</span>                                                                                                                                     final CDIEventDistributor&lt;T&gt; eventDistributor) {<a name="line.751"></a>
-<span class="sourceLineNo">752</span>      this(operation, synchronizationInterval, knownObjects, new EventDistributor&lt;&gt;(knownObjects), true);<a name="line.752"></a>
-<span class="sourceLineNo">753</span>      assert this.eventDistributor != null;<a name="line.753"></a>
-<span class="sourceLineNo">754</span>      if (eventDistributor != null) {<a name="line.754"></a>
-<span class="sourceLineNo">755</span>        this.eventDistributor.addConsumer(eventDistributor);<a name="line.755"></a>
-<span class="sourceLineNo">756</span>      }      <a name="line.756"></a>
-<span class="sourceLineNo">757</span>    }<a name="line.757"></a>
-<span class="sourceLineNo">758</span>    <a name="line.758"></a>
-<span class="sourceLineNo">759</span>    @SuppressWarnings("rawtypes")<a name="line.759"></a>
-<span class="sourceLineNo">760</span>    private &lt;X extends Listable&lt;? extends KubernetesResourceList&gt; &amp; VersionWatchable&lt;? extends Closeable, Watcher&lt;T&gt;&gt;&gt; CDIController(final X operation,<a name="line.760"></a>
-<span class="sourceLineNo">761</span>                                                                                                                                     final Duration synchronizationInterval,<a name="line.761"></a>
-<span class="sourceLineNo">762</span>                                                                                                                                     final Map&lt;Object, T&gt; knownObjects,<a name="line.762"></a>
-<span class="sourceLineNo">763</span>                                                                                                                                     final EventDistributor&lt;T&gt; siphon,<a name="line.763"></a>
-<span class="sourceLineNo">764</span>                                                                                                                                     final boolean close) {<a name="line.764"></a>
-<span class="sourceLineNo">765</span>      super(operation, synchronizationInterval, knownObjects, siphon);<a name="line.765"></a>
-<span class="sourceLineNo">766</span>      this.eventDistributor = Objects.requireNonNull(siphon);<a name="line.766"></a>
-<span class="sourceLineNo">767</span>      this.close = close;<a name="line.767"></a>
-<span class="sourceLineNo">768</span>    }<a name="line.768"></a>
-<span class="sourceLineNo">769</span><a name="line.769"></a>
-<span class="sourceLineNo">770</span>    @Override<a name="line.770"></a>
-<span class="sourceLineNo">771</span>    protected final boolean shouldSynchronize() {<a name="line.771"></a>
-<span class="sourceLineNo">772</span>      return this.eventDistributor.shouldSynchronize();<a name="line.772"></a>
-<span class="sourceLineNo">773</span>    }<a name="line.773"></a>
-<span class="sourceLineNo">774</span><a name="line.774"></a>
-<span class="sourceLineNo">775</span>    @Override<a name="line.775"></a>
-<span class="sourceLineNo">776</span>    protected final void onClose() {<a name="line.776"></a>
-<span class="sourceLineNo">777</span>      if (this.close) {<a name="line.777"></a>
-<span class="sourceLineNo">778</span>        this.eventDistributor.close();<a name="line.778"></a>
-<span class="sourceLineNo">779</span>      }<a name="line.779"></a>
-<span class="sourceLineNo">780</span>    }<a name="line.780"></a>
-<span class="sourceLineNo">781</span>    <a name="line.781"></a>
-<span class="sourceLineNo">782</span>  }<a name="line.782"></a>
-<span class="sourceLineNo">783</span>  <a name="line.783"></a>
-<span class="sourceLineNo">784</span>  private static final class CDIEventDistributor&lt;T extends HasMetadata&gt; implements Consumer&lt;AbstractEvent&lt;? extends T&gt;&gt; {<a name="line.784"></a>
-<span class="sourceLineNo">785</span><a name="line.785"></a>
-<span class="sourceLineNo">786</span>    private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];<a name="line.786"></a>
-<span class="sourceLineNo">787</span>    <a name="line.787"></a>
-<span class="sourceLineNo">788</span>    private final Annotation[] qualifiers;<a name="line.788"></a>
-<span class="sourceLineNo">789</span><a name="line.789"></a>
-<span class="sourceLineNo">790</span>    private final NotificationOptions notificationOptions;<a name="line.790"></a>
+<span class="sourceLineNo">680</span>   * A bit of a hack to return the {@link Type} that is the "right<a name="line.680"></a>
+<span class="sourceLineNo">681</span>   * kind" of {@link Listable} and {@link VersionWatchable}<a name="line.681"></a>
+<span class="sourceLineNo">682</span>   * implementation from the supplied {@link Bean}'s {@linkplain<a name="line.682"></a>
+<span class="sourceLineNo">683</span>   * Bean#getTypes() types}, if it is present among them, and to<a name="line.683"></a>
+<span class="sourceLineNo">684</span>   * return {@code null} otherwise.<a name="line.684"></a>
+<span class="sourceLineNo">685</span>   *<a name="line.685"></a>
+<span class="sourceLineNo">686</span>   * &lt;p&gt;This method may return {@code null}.&lt;/p&gt;<a name="line.686"></a>
+<span class="sourceLineNo">687</span>   *<a name="line.687"></a>
+<span class="sourceLineNo">688</span>   * &lt;p&gt;{@link Operation Operation.class} is the most general<a name="line.688"></a>
+<span class="sourceLineNo">689</span>   * interface that implements both {@link Listable} and {@link<a name="line.689"></a>
+<span class="sourceLineNo">690</span>   * VersionWatchable}, which is a common constraint for {@link<a name="line.690"></a>
+<span class="sourceLineNo">691</span>   * Controller} operations, and is often what this method returns in<a name="line.691"></a>
+<span class="sourceLineNo">692</span>   * {@link ParameterizedType} form.&lt;/p&gt;<a name="line.692"></a>
+<span class="sourceLineNo">693</span>   *<a name="line.693"></a>
+<span class="sourceLineNo">694</span>   * @param bean the {@link Bean} to inspect; may be {@code null} in<a name="line.694"></a>
+<span class="sourceLineNo">695</span>   * which case {@code null} will be returned<a name="line.695"></a>
+<span class="sourceLineNo">696</span>   *<a name="line.696"></a>
+<span class="sourceLineNo">697</span>   * @return a {@link Type} that is both {@link Listable} and {@link<a name="line.697"></a>
+<span class="sourceLineNo">698</span>   * VersionWatchable}, or {@code null}<a name="line.698"></a>
+<span class="sourceLineNo">699</span>   *<a name="line.699"></a>
+<span class="sourceLineNo">700</span>   * @see Operation<a name="line.700"></a>
+<span class="sourceLineNo">701</span>   *<a name="line.701"></a>
+<span class="sourceLineNo">702</span>   * @see Listable<a name="line.702"></a>
+<span class="sourceLineNo">703</span>   *<a name="line.703"></a>
+<span class="sourceLineNo">704</span>   * @see VersionWatchable<a name="line.704"></a>
+<span class="sourceLineNo">705</span>   */<a name="line.705"></a>
+<span class="sourceLineNo">706</span>  private static final Type getListableVersionWatchableType(final Bean&lt;?&gt; bean) {<a name="line.706"></a>
+<span class="sourceLineNo">707</span>    final String cn = KubernetesControllerExtension.class.getName();<a name="line.707"></a>
+<span class="sourceLineNo">708</span>    final Logger logger = Logger.getLogger(cn);<a name="line.708"></a>
+<span class="sourceLineNo">709</span>    assert logger != null;<a name="line.709"></a>
+<span class="sourceLineNo">710</span>    final String mn = "getListableVersionWatchableType";<a name="line.710"></a>
+<span class="sourceLineNo">711</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.711"></a>
+<span class="sourceLineNo">712</span>      logger.entering(cn, mn, bean);<a name="line.712"></a>
+<span class="sourceLineNo">713</span>    }<a name="line.713"></a>
+<span class="sourceLineNo">714</span>    <a name="line.714"></a>
+<span class="sourceLineNo">715</span>    final Type returnValue;<a name="line.715"></a>
+<span class="sourceLineNo">716</span>    if (bean == null) {<a name="line.716"></a>
+<span class="sourceLineNo">717</span>      returnValue = null;<a name="line.717"></a>
+<span class="sourceLineNo">718</span>    } else {<a name="line.718"></a>
+<span class="sourceLineNo">719</span>      returnValue = getListableVersionWatchableType(bean.getTypes());<a name="line.719"></a>
+<span class="sourceLineNo">720</span>    }<a name="line.720"></a>
+<span class="sourceLineNo">721</span>    <a name="line.721"></a>
+<span class="sourceLineNo">722</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.722"></a>
+<span class="sourceLineNo">723</span>      logger.exiting(cn, mn, returnValue);<a name="line.723"></a>
+<span class="sourceLineNo">724</span>    }<a name="line.724"></a>
+<span class="sourceLineNo">725</span>    return returnValue;<a name="line.725"></a>
+<span class="sourceLineNo">726</span>  }<a name="line.726"></a>
+<span class="sourceLineNo">727</span><a name="line.727"></a>
+<span class="sourceLineNo">728</span>  private static final Type getListableVersionWatchableType(final Collection&lt;? extends Type&gt; beanTypes) {<a name="line.728"></a>
+<span class="sourceLineNo">729</span>    final String cn = KubernetesControllerExtension.class.getName();<a name="line.729"></a>
+<span class="sourceLineNo">730</span>    final Logger logger = Logger.getLogger(cn);<a name="line.730"></a>
+<span class="sourceLineNo">731</span>    assert logger != null;<a name="line.731"></a>
+<span class="sourceLineNo">732</span>    final String mn = "getListableVersionWatchableType";<a name="line.732"></a>
+<span class="sourceLineNo">733</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.733"></a>
+<span class="sourceLineNo">734</span>      logger.entering(cn, mn, beanTypes);<a name="line.734"></a>
+<span class="sourceLineNo">735</span>    }<a name="line.735"></a>
+<span class="sourceLineNo">736</span><a name="line.736"></a>
+<span class="sourceLineNo">737</span>    final Type returnValue;<a name="line.737"></a>
+<span class="sourceLineNo">738</span>    if (beanTypes == null || beanTypes.isEmpty()) {<a name="line.738"></a>
+<span class="sourceLineNo">739</span>      returnValue = null;<a name="line.739"></a>
+<span class="sourceLineNo">740</span>    } else {<a name="line.740"></a>
+<span class="sourceLineNo">741</span>      Type candidate = null;<a name="line.741"></a>
+<span class="sourceLineNo">742</span>      for (final Type beanType : beanTypes) {<a name="line.742"></a>
+<span class="sourceLineNo">743</span>        if (beanType instanceof ParameterizedType) {<a name="line.743"></a>
+<span class="sourceLineNo">744</span>          candidate = getListableVersionWatchableType((ParameterizedType)beanType);<a name="line.744"></a>
+<span class="sourceLineNo">745</span>          if (candidate != null) {<a name="line.745"></a>
+<span class="sourceLineNo">746</span>            break;<a name="line.746"></a>
+<span class="sourceLineNo">747</span>          }<a name="line.747"></a>
+<span class="sourceLineNo">748</span>        }<a name="line.748"></a>
+<span class="sourceLineNo">749</span>      }<a name="line.749"></a>
+<span class="sourceLineNo">750</span>      returnValue = candidate;<a name="line.750"></a>
+<span class="sourceLineNo">751</span>    }<a name="line.751"></a>
+<span class="sourceLineNo">752</span><a name="line.752"></a>
+<span class="sourceLineNo">753</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.753"></a>
+<span class="sourceLineNo">754</span>      logger.exiting(cn, mn, returnValue);<a name="line.754"></a>
+<span class="sourceLineNo">755</span>    }<a name="line.755"></a>
+<span class="sourceLineNo">756</span>    return returnValue;<a name="line.756"></a>
+<span class="sourceLineNo">757</span>  }<a name="line.757"></a>
+<span class="sourceLineNo">758</span><a name="line.758"></a>
+<span class="sourceLineNo">759</span>  private static final Type getListableVersionWatchableType(final ParameterizedType type) {<a name="line.759"></a>
+<span class="sourceLineNo">760</span>    final String cn = KubernetesControllerExtension.class.getName();<a name="line.760"></a>
+<span class="sourceLineNo">761</span>    final Logger logger = Logger.getLogger(cn);<a name="line.761"></a>
+<span class="sourceLineNo">762</span>    assert logger != null;<a name="line.762"></a>
+<span class="sourceLineNo">763</span>    final String mn = "getListableVersionWatchableType";<a name="line.763"></a>
+<span class="sourceLineNo">764</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.764"></a>
+<span class="sourceLineNo">765</span>      logger.entering(cn, mn, type);<a name="line.765"></a>
+<span class="sourceLineNo">766</span>    }<a name="line.766"></a>
+<span class="sourceLineNo">767</span><a name="line.767"></a>
+<span class="sourceLineNo">768</span>    Type candidate = null;<a name="line.768"></a>
+<span class="sourceLineNo">769</span>    final Type rawType = type.getRawType();<a name="line.769"></a>
+<span class="sourceLineNo">770</span>    if (rawType instanceof Class) {<a name="line.770"></a>
+<span class="sourceLineNo">771</span>      // This should always be the case; see e.g. https://stackoverflow.com/a/5767681/208288<a name="line.771"></a>
+<span class="sourceLineNo">772</span>      final Class&lt;?&gt; rawClass = (Class&lt;?&gt;)rawType;<a name="line.772"></a>
+<span class="sourceLineNo">773</span>      if (Listable.class.isAssignableFrom(rawClass) &amp;&amp; VersionWatchable.class.isAssignableFrom(rawClass)) {<a name="line.773"></a>
+<span class="sourceLineNo">774</span>        // TODO: check type parameters<a name="line.774"></a>
+<span class="sourceLineNo">775</span>        candidate = type;<a name="line.775"></a>
+<span class="sourceLineNo">776</span>      }<a name="line.776"></a>
+<span class="sourceLineNo">777</span>    }<a name="line.777"></a>
+<span class="sourceLineNo">778</span>    <a name="line.778"></a>
+<span class="sourceLineNo">779</span>    final Type returnValue = candidate;<a name="line.779"></a>
+<span class="sourceLineNo">780</span><a name="line.780"></a>
+<span class="sourceLineNo">781</span>    if (logger.isLoggable(Level.FINER)) {<a name="line.781"></a>
+<span class="sourceLineNo">782</span>      logger.exiting(cn, mn, returnValue);<a name="line.782"></a>
+<span class="sourceLineNo">783</span>    }<a name="line.783"></a>
+<span class="sourceLineNo">784</span>    return returnValue;<a name="line.784"></a>
+<span class="sourceLineNo">785</span>  }<a name="line.785"></a>
+<span class="sourceLineNo">786</span><a name="line.786"></a>
+<span class="sourceLineNo">787</span><a name="line.787"></a>
+<span class="sourceLineNo">788</span>  /*<a name="line.788"></a>
+<span class="sourceLineNo">789</span>   * Inner and nested classes.<a name="line.789"></a>
+<span class="sourceLineNo">790</span>   */<a name="line.790"></a>
 <span class="sourceLineNo">791</span><a name="line.791"></a>
-<span class="sourceLineNo">792</span>    private final boolean syncNeeded;<a name="line.792"></a>
-<span class="sourceLineNo">793</span><a name="line.793"></a>
-<span class="sourceLineNo">794</span>    private final boolean asyncNeeded;<a name="line.794"></a>
-<span class="sourceLineNo">795</span><a name="line.795"></a>
-<span class="sourceLineNo">796</span>    private final Logger logger;<a name="line.796"></a>
-<span class="sourceLineNo">797</span>    <a name="line.797"></a>
-<span class="sourceLineNo">798</span>    private CDIEventDistributor(final Set&lt;Annotation&gt; qualifiers, final NotificationOptions notificationOptions, final boolean syncNeeded, final boolean asyncNeeded) {<a name="line.798"></a>
-<span class="sourceLineNo">799</span>      super();<a name="line.799"></a>
-<span class="sourceLineNo">800</span>      final String cn = this.getClass().getName();      <a name="line.800"></a>
-<span class="sourceLineNo">801</span>      this.logger = Logger.getLogger(cn);<a name="line.801"></a>
-<span class="sourceLineNo">802</span>      assert this.logger != null;<a name="line.802"></a>
-<span class="sourceLineNo">803</span>      final String mn = "&lt;init&gt;";<a name="line.803"></a>
-<span class="sourceLineNo">804</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.804"></a>
-<span class="sourceLineNo">805</span>        this.logger.entering(cn, mn, new Object[] { qualifiers, notificationOptions, Boolean.valueOf(syncNeeded), Boolean.valueOf(asyncNeeded) });<a name="line.805"></a>
-<span class="sourceLineNo">806</span>      }<a name="line.806"></a>
-<span class="sourceLineNo">807</span><a name="line.807"></a>
-<span class="sourceLineNo">808</span>      if (qualifiers == null) {<a name="line.808"></a>
-<span class="sourceLineNo">809</span>        this.qualifiers = EMPTY_ANNOTATION_ARRAY;<a name="line.809"></a>
-<span class="sourceLineNo">810</span>      } else {<a name="line.810"></a>
-<span class="sourceLineNo">811</span>        this.qualifiers = qualifiers.toArray(new Annotation[qualifiers.size()]);<a name="line.811"></a>
-<span class="sourceLineNo">812</span>      }<a name="line.812"></a>
-<span class="sourceLineNo">813</span>      this.notificationOptions = notificationOptions;<a name="line.813"></a>
-<span class="sourceLineNo">814</span>      this.syncNeeded = syncNeeded;<a name="line.814"></a>
-<span class="sourceLineNo">815</span>      this.asyncNeeded = asyncNeeded;<a name="line.815"></a>
-<span class="sourceLineNo">816</span><a name="line.816"></a>
-<span class="sourceLineNo">817</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.817"></a>
-<span class="sourceLineNo">818</span>        this.logger.exiting(cn, mn);<a name="line.818"></a>
-<span class="sourceLineNo">819</span>      }<a name="line.819"></a>
+<span class="sourceLineNo">792</span><a name="line.792"></a>
+<span class="sourceLineNo">793</span>  private static final class CDIController&lt;T extends HasMetadata&gt; extends Controller&lt;T&gt; {<a name="line.793"></a>
+<span class="sourceLineNo">794</span><a name="line.794"></a>
+<span class="sourceLineNo">795</span>    private final EventDistributor&lt;T&gt; eventDistributor;<a name="line.795"></a>
+<span class="sourceLineNo">796</span><a name="line.796"></a>
+<span class="sourceLineNo">797</span>    private final boolean close;<a name="line.797"></a>
+<span class="sourceLineNo">798</span><a name="line.798"></a>
+<span class="sourceLineNo">799</span>    @SuppressWarnings("rawtypes")<a name="line.799"></a>
+<span class="sourceLineNo">800</span>    private &lt;X extends Listable&lt;? extends KubernetesResourceList&gt; &amp; VersionWatchable&lt;? extends Closeable, Watcher&lt;T&gt;&gt;&gt; CDIController(final X operation,<a name="line.800"></a>
+<span class="sourceLineNo">801</span>                                                                                                                                     final Duration synchronizationInterval,<a name="line.801"></a>
+<span class="sourceLineNo">802</span>                                                                                                                                     final Map&lt;Object, T&gt; knownObjects,<a name="line.802"></a>
+<span class="sourceLineNo">803</span>                                                                                                                                     final CDIEventDistributor&lt;T&gt; eventDistributor) {<a name="line.803"></a>
+<span class="sourceLineNo">804</span>      this(operation, synchronizationInterval, knownObjects, new EventDistributor&lt;&gt;(knownObjects), true);<a name="line.804"></a>
+<span class="sourceLineNo">805</span>      assert this.eventDistributor != null;<a name="line.805"></a>
+<span class="sourceLineNo">806</span>      if (eventDistributor != null) {<a name="line.806"></a>
+<span class="sourceLineNo">807</span>        this.eventDistributor.addConsumer(eventDistributor);<a name="line.807"></a>
+<span class="sourceLineNo">808</span>      }      <a name="line.808"></a>
+<span class="sourceLineNo">809</span>    }<a name="line.809"></a>
+<span class="sourceLineNo">810</span>    <a name="line.810"></a>
+<span class="sourceLineNo">811</span>    @SuppressWarnings("rawtypes")<a name="line.811"></a>
+<span class="sourceLineNo">812</span>    private &lt;X extends Listable&lt;? extends KubernetesResourceList&gt; &amp; VersionWatchable&lt;? extends Closeable, Watcher&lt;T&gt;&gt;&gt; CDIController(final X operation,<a name="line.812"></a>
+<span class="sourceLineNo">813</span>                                                                                                                                     final Duration synchronizationInterval,<a name="line.813"></a>
+<span class="sourceLineNo">814</span>                                                                                                                                     final Map&lt;Object, T&gt; knownObjects,<a name="line.814"></a>
+<span class="sourceLineNo">815</span>                                                                                                                                     final EventDistributor&lt;T&gt; siphon,<a name="line.815"></a>
+<span class="sourceLineNo">816</span>                                                                                                                                     final boolean close) {<a name="line.816"></a>
+<span class="sourceLineNo">817</span>      super(operation, synchronizationInterval, knownObjects, siphon);<a name="line.817"></a>
+<span class="sourceLineNo">818</span>      this.eventDistributor = Objects.requireNonNull(siphon);<a name="line.818"></a>
+<span class="sourceLineNo">819</span>      this.close = close;<a name="line.819"></a>
 <span class="sourceLineNo">820</span>    }<a name="line.820"></a>
 <span class="sourceLineNo">821</span><a name="line.821"></a>
 <span class="sourceLineNo">822</span>    @Override<a name="line.822"></a>
-<span class="sourceLineNo">823</span>    public final void accept(final AbstractEvent&lt;? extends T&gt; controllerEvent) {<a name="line.823"></a>
-<span class="sourceLineNo">824</span>      final String cn = this.getClass().getName();<a name="line.824"></a>
-<span class="sourceLineNo">825</span>      final String mn = "accept";<a name="line.825"></a>
-<span class="sourceLineNo">826</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.826"></a>
-<span class="sourceLineNo">827</span>        this.logger.entering(cn, mn, controllerEvent);<a name="line.827"></a>
-<span class="sourceLineNo">828</span>      }<a name="line.828"></a>
-<span class="sourceLineNo">829</span><a name="line.829"></a>
-<span class="sourceLineNo">830</span>      if (controllerEvent != null &amp;&amp; (this.syncNeeded || this.asyncNeeded)) {<a name="line.830"></a>
-<span class="sourceLineNo">831</span>        final BeanManager beanManager = CDI.current().getBeanManager();<a name="line.831"></a>
-<span class="sourceLineNo">832</span>        assert beanManager != null;<a name="line.832"></a>
-<span class="sourceLineNo">833</span>        final javax.enterprise.event.Event&lt;Object&gt; cdiEventMachinery = beanManager.getEvent();<a name="line.833"></a>
-<span class="sourceLineNo">834</span>        assert cdiEventMachinery != null;<a name="line.834"></a>
-<span class="sourceLineNo">835</span>        final TypeLiteral&lt;AbstractEvent&lt;? extends T&gt;&gt; eventTypeLiteral = new TypeLiteral&lt;AbstractEvent&lt;? extends T&gt;&gt;() {<a name="line.835"></a>
-<span class="sourceLineNo">836</span>            private static final long serialVersionUID = 1L;<a name="line.836"></a>
-<span class="sourceLineNo">837</span>          };<a name="line.837"></a>
-<span class="sourceLineNo">838</span>        final javax.enterprise.event.Event&lt;AbstractEvent&lt;? extends T&gt;&gt; broadcaster = cdiEventMachinery.select(eventTypeLiteral, this.qualifiers);<a name="line.838"></a>
-<span class="sourceLineNo">839</span>        assert broadcaster != null;<a name="line.839"></a>
-<span class="sourceLineNo">840</span>        if (this.asyncNeeded) {<a name="line.840"></a>
-<span class="sourceLineNo">841</span>          if (this.notificationOptions == null) {<a name="line.841"></a>
-<span class="sourceLineNo">842</span>            broadcaster.fireAsync(controllerEvent);<a name="line.842"></a>
-<span class="sourceLineNo">843</span>          } else {<a name="line.843"></a>
-<span class="sourceLineNo">844</span>            broadcaster.fireAsync(controllerEvent, this.notificationOptions);<a name="line.844"></a>
-<span class="sourceLineNo">845</span>          }<a name="line.845"></a>
-<span class="sourceLineNo">846</span>        }<a name="line.846"></a>
-<span class="sourceLineNo">847</span>        if (this.syncNeeded) {<a name="line.847"></a>
-<span class="sourceLineNo">848</span>          broadcaster.fire(controllerEvent);<a name="line.848"></a>
-<span class="sourceLineNo">849</span>        }<a name="line.849"></a>
-<span class="sourceLineNo">850</span>      }<a name="line.850"></a>
-<span class="sourceLineNo">851</span><a name="line.851"></a>
-<span class="sourceLineNo">852</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.852"></a>
-<span class="sourceLineNo">853</span>        this.logger.exiting(cn, mn);<a name="line.853"></a>
-<span class="sourceLineNo">854</span>      }<a name="line.854"></a>
-<span class="sourceLineNo">855</span>    }<a name="line.855"></a>
-<span class="sourceLineNo">856</span>    <a name="line.856"></a>
-<span class="sourceLineNo">857</span>  }<a name="line.857"></a>
-<span class="sourceLineNo">858</span>  <a name="line.858"></a>
-<span class="sourceLineNo">859</span>}<a name="line.859"></a>
+<span class="sourceLineNo">823</span>    protected final boolean shouldSynchronize() {<a name="line.823"></a>
+<span class="sourceLineNo">824</span>      return this.eventDistributor.shouldSynchronize();<a name="line.824"></a>
+<span class="sourceLineNo">825</span>    }<a name="line.825"></a>
+<span class="sourceLineNo">826</span><a name="line.826"></a>
+<span class="sourceLineNo">827</span>    @Override<a name="line.827"></a>
+<span class="sourceLineNo">828</span>    protected final void onClose() {<a name="line.828"></a>
+<span class="sourceLineNo">829</span>      if (this.close) {<a name="line.829"></a>
+<span class="sourceLineNo">830</span>        this.eventDistributor.close();<a name="line.830"></a>
+<span class="sourceLineNo">831</span>      }<a name="line.831"></a>
+<span class="sourceLineNo">832</span>    }<a name="line.832"></a>
+<span class="sourceLineNo">833</span>    <a name="line.833"></a>
+<span class="sourceLineNo">834</span>  }<a name="line.834"></a>
+<span class="sourceLineNo">835</span>  <a name="line.835"></a>
+<span class="sourceLineNo">836</span>  private static final class CDIEventDistributor&lt;T extends HasMetadata&gt; implements Consumer&lt;AbstractEvent&lt;? extends T&gt;&gt; {<a name="line.836"></a>
+<span class="sourceLineNo">837</span><a name="line.837"></a>
+<span class="sourceLineNo">838</span>    private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];<a name="line.838"></a>
+<span class="sourceLineNo">839</span>    <a name="line.839"></a>
+<span class="sourceLineNo">840</span>    private final Annotation[] qualifiers;<a name="line.840"></a>
+<span class="sourceLineNo">841</span><a name="line.841"></a>
+<span class="sourceLineNo">842</span>    private final NotificationOptions notificationOptions;<a name="line.842"></a>
+<span class="sourceLineNo">843</span><a name="line.843"></a>
+<span class="sourceLineNo">844</span>    private final boolean syncNeeded;<a name="line.844"></a>
+<span class="sourceLineNo">845</span><a name="line.845"></a>
+<span class="sourceLineNo">846</span>    private final boolean asyncNeeded;<a name="line.846"></a>
+<span class="sourceLineNo">847</span><a name="line.847"></a>
+<span class="sourceLineNo">848</span>    private final Logger logger;<a name="line.848"></a>
+<span class="sourceLineNo">849</span>    <a name="line.849"></a>
+<span class="sourceLineNo">850</span>    private CDIEventDistributor(final Set&lt;Annotation&gt; qualifiers, final NotificationOptions notificationOptions, final boolean syncNeeded, final boolean asyncNeeded) {<a name="line.850"></a>
+<span class="sourceLineNo">851</span>      super();<a name="line.851"></a>
+<span class="sourceLineNo">852</span>      final String cn = this.getClass().getName();      <a name="line.852"></a>
+<span class="sourceLineNo">853</span>      this.logger = Logger.getLogger(cn);<a name="line.853"></a>
+<span class="sourceLineNo">854</span>      assert this.logger != null;<a name="line.854"></a>
+<span class="sourceLineNo">855</span>      final String mn = "&lt;init&gt;";<a name="line.855"></a>
+<span class="sourceLineNo">856</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.856"></a>
+<span class="sourceLineNo">857</span>        this.logger.entering(cn, mn, new Object[] { qualifiers, notificationOptions, Boolean.valueOf(syncNeeded), Boolean.valueOf(asyncNeeded) });<a name="line.857"></a>
+<span class="sourceLineNo">858</span>      }<a name="line.858"></a>
+<span class="sourceLineNo">859</span><a name="line.859"></a>
+<span class="sourceLineNo">860</span>      if (qualifiers == null) {<a name="line.860"></a>
+<span class="sourceLineNo">861</span>        this.qualifiers = EMPTY_ANNOTATION_ARRAY;<a name="line.861"></a>
+<span class="sourceLineNo">862</span>      } else {<a name="line.862"></a>
+<span class="sourceLineNo">863</span>        this.qualifiers = qualifiers.toArray(new Annotation[qualifiers.size()]);<a name="line.863"></a>
+<span class="sourceLineNo">864</span>      }<a name="line.864"></a>
+<span class="sourceLineNo">865</span>      this.notificationOptions = notificationOptions;<a name="line.865"></a>
+<span class="sourceLineNo">866</span>      this.syncNeeded = syncNeeded;<a name="line.866"></a>
+<span class="sourceLineNo">867</span>      this.asyncNeeded = asyncNeeded;<a name="line.867"></a>
+<span class="sourceLineNo">868</span><a name="line.868"></a>
+<span class="sourceLineNo">869</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.869"></a>
+<span class="sourceLineNo">870</span>        this.logger.exiting(cn, mn);<a name="line.870"></a>
+<span class="sourceLineNo">871</span>      }<a name="line.871"></a>
+<span class="sourceLineNo">872</span>    }<a name="line.872"></a>
+<span class="sourceLineNo">873</span><a name="line.873"></a>
+<span class="sourceLineNo">874</span>    @Override<a name="line.874"></a>
+<span class="sourceLineNo">875</span>    public final void accept(final AbstractEvent&lt;? extends T&gt; controllerEvent) {<a name="line.875"></a>
+<span class="sourceLineNo">876</span>      final String cn = this.getClass().getName();<a name="line.876"></a>
+<span class="sourceLineNo">877</span>      final String mn = "accept";<a name="line.877"></a>
+<span class="sourceLineNo">878</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.878"></a>
+<span class="sourceLineNo">879</span>        this.logger.entering(cn, mn, controllerEvent);<a name="line.879"></a>
+<span class="sourceLineNo">880</span>      }<a name="line.880"></a>
+<span class="sourceLineNo">881</span><a name="line.881"></a>
+<span class="sourceLineNo">882</span>      if (controllerEvent != null &amp;&amp; (this.syncNeeded || this.asyncNeeded)) {<a name="line.882"></a>
+<span class="sourceLineNo">883</span>        final BeanManager beanManager = CDI.current().getBeanManager();<a name="line.883"></a>
+<span class="sourceLineNo">884</span>        assert beanManager != null;<a name="line.884"></a>
+<span class="sourceLineNo">885</span>        final javax.enterprise.event.Event&lt;Object&gt; cdiEventMachinery = beanManager.getEvent();<a name="line.885"></a>
+<span class="sourceLineNo">886</span>        assert cdiEventMachinery != null;<a name="line.886"></a>
+<span class="sourceLineNo">887</span>        final TypeLiteral&lt;AbstractEvent&lt;? extends T&gt;&gt; eventTypeLiteral = new TypeLiteral&lt;AbstractEvent&lt;? extends T&gt;&gt;() {<a name="line.887"></a>
+<span class="sourceLineNo">888</span>            private static final long serialVersionUID = 1L;<a name="line.888"></a>
+<span class="sourceLineNo">889</span>          };<a name="line.889"></a>
+<span class="sourceLineNo">890</span>        final javax.enterprise.event.Event&lt;AbstractEvent&lt;? extends T&gt;&gt; broadcaster = cdiEventMachinery.select(eventTypeLiteral, this.qualifiers);<a name="line.890"></a>
+<span class="sourceLineNo">891</span>        assert broadcaster != null;<a name="line.891"></a>
+<span class="sourceLineNo">892</span>        if (this.asyncNeeded) {<a name="line.892"></a>
+<span class="sourceLineNo">893</span>          if (this.notificationOptions == null) {<a name="line.893"></a>
+<span class="sourceLineNo">894</span>            broadcaster.fireAsync(controllerEvent);<a name="line.894"></a>
+<span class="sourceLineNo">895</span>          } else {<a name="line.895"></a>
+<span class="sourceLineNo">896</span>            broadcaster.fireAsync(controllerEvent, this.notificationOptions);<a name="line.896"></a>
+<span class="sourceLineNo">897</span>          }<a name="line.897"></a>
+<span class="sourceLineNo">898</span>        }<a name="line.898"></a>
+<span class="sourceLineNo">899</span>        if (this.syncNeeded) {<a name="line.899"></a>
+<span class="sourceLineNo">900</span>          broadcaster.fire(controllerEvent);<a name="line.900"></a>
+<span class="sourceLineNo">901</span>        }<a name="line.901"></a>
+<span class="sourceLineNo">902</span>      }<a name="line.902"></a>
+<span class="sourceLineNo">903</span><a name="line.903"></a>
+<span class="sourceLineNo">904</span>      if (this.logger.isLoggable(Level.FINER)) {<a name="line.904"></a>
+<span class="sourceLineNo">905</span>        this.logger.exiting(cn, mn);<a name="line.905"></a>
+<span class="sourceLineNo">906</span>      }<a name="line.906"></a>
+<span class="sourceLineNo">907</span>    }<a name="line.907"></a>
+<span class="sourceLineNo">908</span>    <a name="line.908"></a>
+<span class="sourceLineNo">909</span>  }<a name="line.909"></a>
+<span class="sourceLineNo">910</span>  <a name="line.910"></a>
+<span class="sourceLineNo">911</span>}<a name="line.911"></a>
 
 
 
