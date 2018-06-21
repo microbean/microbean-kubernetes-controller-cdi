@@ -20,6 +20,7 @@ import java.io.Closeable;
 import java.io.IOException;
 
 import java.lang.annotation.Annotation;
+import java.lang.annotation.ElementType; // for javadoc only
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -27,13 +28,20 @@ import java.lang.reflect.Type;
 import java.time.Duration;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 
 import java.util.function.Consumer;
@@ -45,16 +53,24 @@ import javax.annotation.Priority;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.BeforeDestroyed;
+import javax.enterprise.context.ContextNotActiveException;
 import javax.enterprise.context.Initialized;
+
+import javax.enterprise.context.spi.AlterableContext;
+import javax.enterprise.context.spi.Contextual;
+import javax.enterprise.context.spi.CreationalContext;
 
 import javax.enterprise.event.NotificationOptions;
 import javax.enterprise.event.Observes;
 
+import javax.enterprise.inject.Default; // for javadoc only
+
 import javax.enterprise.inject.spi.AfterBeanDiscovery;
+import javax.enterprise.inject.spi.BeanAttributes;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
-import javax.enterprise.inject.spi.Extension;
+import javax.enterprise.inject.spi.EventContext;
 import javax.enterprise.inject.spi.ObserverMethod;
 import javax.enterprise.inject.spi.ProcessManagedBean;
 import javax.enterprise.inject.spi.ProcessObserverMethod;
@@ -63,11 +79,15 @@ import javax.enterprise.inject.spi.ProcessProducerMethod;
 import javax.enterprise.inject.spi.ProcessSyntheticBean;
 import javax.enterprise.inject.spi.ProcessSyntheticObserverMethod;
 
-import javax.enterprise.util.TypeLiteral;
+import javax.enterprise.inject.spi.configurator.ObserverMethodConfigurator.EventConsumer;
 
+import javax.inject.Qualifier; // for javadoc only
+
+import io.fabric8.kubernetes.api.model.ConfigMap; // for javadoc only
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 
+import io.fabric8.kubernetes.client.KubernetesClient; // for javadoc only
 import io.fabric8.kubernetes.client.Watcher;
 
 import io.fabric8.kubernetes.client.dsl.Listable;
@@ -81,8 +101,8 @@ import org.microbean.configuration.api.Configurations;
 
 import org.microbean.kubernetes.controller.AbstractEvent;
 import org.microbean.kubernetes.controller.Controller;
-import org.microbean.kubernetes.controller.EventQueue;
 import org.microbean.kubernetes.controller.EventDistributor;
+import org.microbean.kubernetes.controller.SynchronizationEvent;
 
 import static javax.interceptor.Interceptor.Priority.LIBRARY_AFTER;
 import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
@@ -91,12 +111,213 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * An {@link AbstractBlockingExtension} that distributes Kubernetes
  * events to interested listeners asynchronously.
  *
+ * <h1>Usage</h1>
+ * 
+ * <p>To use this extension, simply place it on your classpath (along
+ * with your selection from a menu of certain required runtime
+ * dependencies described below).  If you have a mechanism for
+ * describing the kinds of Kubernetes resources you'd like to watch
+ * for events, and if you have observer methods created to do
+ * something with those events, both of which are described below,
+ * then this extension will take care of connecting to the Kubernetes
+ * API server and listing and watching for new events for you.</p>
+ *
+ * <h2>Dependency Choices</h2>
+ *
+ * <p>This extension relies on the presence of certain CDI beans.  In
+ * some cases, those beans are not produced by this extension.  For
+ * maximum flexibility, this project does not mandate how certain
+ * beans are produced.  Below is a list of the beans that are
+ * required, and suggested&mdash;but not required&mdash;ways of
+ * producing them.</p>
+ *
+ * <h2>Maven</h2>
+ *
+ * <p>If you are using Maven, you may indicate that you want this
+ * extension to be included on your project's runtime classpath with
+ * the following dependency stanza:</p>
+ *
+ * <blockquote><pre>&lt;dependency&gt;
+ *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
+ *  &lt;artifactId&gt;microbean-kubernetes-controller-cdi&lt;/artifactId&gt;
+ *  &lt;version&gt;0.1.0&lt;/version&gt;
+ *  &lt;scope&gt;runtime&lt;/scope&gt;
+ *&lt;/dependency&gt;</pre></blockquote>
+ *
+ * <h3>{@link KubernetesClient} Bean</h3>
+ *
+ * <p>This extension indirectly requires that a {@link
+ * KubernetesClient} be available in the CDI container (qualified with
+ * {@link Default @Default}).  You can use the <a
+ * href="https://microbean.github.io/microbean-kubernetes-client-cdi/">microBean
+ * Kubernetes Client CDI</a> project for this, or you can arrange to
+ * fulfil this requirement yourself.</p>
+ *
+ * <p>If you are going to use the <a
+ * href="https://microbean.github.io/microbean-kubernetes-client-cdi/">microBean
+ * Kubernetes Client CDI</a> project to provide a {@link
+ * Default}-qualified {@link KubernetesClient}, you can indicate that
+ * you want it to be included on your project's runtime classpath with
+ * the following dependency stanza:</p>
+ *
+ * <blockquote><pre>&lt;dependency&gt;
+ *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
+ *  &lt;artifactId&gt;microbean-kubernetes-client-cdi&lt;/artifactId&gt;
+ *  &lt;version&gt;0.3.1&lt;/version&gt;
+ *  &lt;scope&gt;runtime&lt;/scope&gt;
+ *&lt;/dependency&gt;</pre></blockquote>
+ *
+ * <h3>Configuration Beans</h3>
+ * 
+ * <p>You'll need an implementation of the <a
+ * href="https://microbean.github.io/microbean-configuration-api/">microBean
+ * Configuration API</a>.  Usually, the <a
+ * href="https://microbean.github.io/microbean-configuration/">microBean
+ * Configuration</a> project is what you want.  You can indicate that
+ * you want it to be included on your project's runtime classpath with
+ * the following dependency stanza:</p>
+ *
+ * <blockquote><pre>&lt;dependency&gt;
+ *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
+ *  &lt;artifactId&gt;microbean-configuration&lt;/artifactId&gt;
+ *  &lt;version&gt;0.4.1&lt;/version&gt;
+ *  &lt;scope&gt;runtime&lt;/scope&gt;
+ *&lt;/dependency&gt;</pre></blockquote>
+ *
+ * <p>You'll need a means of getting that configuration implementation
+ * into CDI.  Usually, you would use the <a
+ * href="https://microbean.github.io/microbean-configuration-cdi/">microBean
+ * Configuration CDI</a> project.  You can indicate that you want it
+ * to be included on your project's runtime classpath with the
+ * following dependency stanza:</p>
+ *
+ * <blockquote><pre>&lt;dependency&gt;
+ *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
+ *  &lt;artifactId&gt;microbean-configuration-cdi&lt;/artifactId&gt;
+ *  &lt;version&gt;0.3.1&lt;/version&gt;
+ *  &lt;scope&gt;runtime&lt;/scope&gt;
+ *&lt;/dependency&gt;</pre></blockquote>
+ *
+ * <h2>Event Selectors</h2>
+ * 
+ * <p>To describe the kinds of Kubernetes resources you're interested
+ * in, you'll need one or more <em>event selectors</em> in your CDI
+ * application.  An event selector, for the purposes of this class, is
+ * a CDI bean (either a managed bean or a producer method, most
+ * commonly) with certain types in its {@linkplain Bean#getTypes() set
+ * of bean types}.  Specifically, the event selector type, {@code X},
+ * must conform to this specification:</p>
+ *
+ * <blockquote>{@code <X extends Listable<? extends
+ * KubernetesResourceList> & VersionWatchable<? extends Closeable,
+ * Watcher<? extends HasMetadata>>>}</blockquote>
+ *
+ * <p>Many return types of methods belonging to {@link
+ * KubernetesClient} conveniently conform to this specification.</p>
+ *
+ * <p>The event selector will also need to be annotated with an
+ * annotation that you write describing the sort of event selection it
+ * is.  This annotation does not need any elements, but must itself be
+ * annotated with the {@link
+ * KubernetesEventSelector @KubernetesEventSelector} annotation.  It
+ * must be applicable to {@linkplain ElementType#PARAMETER parameters}
+ * and your event selector beans, so if as is most common you are
+ * writing a producer method it must be applicable to {@linkplain
+ * ElementType#METHOD methods} as well.</p>
+ *
+ * <p>Here is an example producer method that will cause this
+ * extension to look for all ConfigMap events:</p>
+ *
+ * <blockquote><pre>&#64;Produces
+ *&#64;{@link ApplicationScoped}
+ *&#64;AllConfigMapEvents // see declaration below
+ *private static final {@link Operation}&lt;{@link ConfigMap}, ConfigMapList, DoneableConfigMap, Resource&lt;ConfigMap, DoneableConfigMap&gt;&gt; selectAllConfigMaps(final {@link KubernetesClient} client) {
+ *  return {@link KubernetesClient#configMaps() client.configMaps()};
+ *}}</pre></blockquote>
+ *
+ * <p>Note in particular that {@link Operation} implements both {@link
+ * Listable} and {@link VersionWatchable} with the proper type
+ * parameters.</p>
+ *
+ * <p>The {@code @AllConfigMapEvents} annotation is simply:</p>
+ *
+ * <blockquote><pre>&#64;Documented
+ *&#64;{@link KubernetesEventSelector}
+ *&#64;{@link Qualifier}
+ *&#64;Retention(value = RetentionPolicy.RUNTIME)
+ *&#64;Target({ ElementType.METHOD, ElementType.PARAMETER })
+ *public &#64;interface AllConfigMapEvents {
+ *
+ *}</pre></blockquote>
+ *
+ * <h2>Observer Methods</h2>
+ *
+ * <p>Observer methods are where your CDI application actually takes
+ * delivery of a Kubernetes resource as a CDI event.</p>
+ *
+ * <p>You will need a notional pair consisting of an event selector
+ * and an observer method that conforms to certain requirements that
+ * help "link" it to its associated event selector.  To realize this
+ * pair, you write a normal CDI observer method that adheres to the
+ * following additional requirements:</p>
+ *
+ * <ol>
+ *
+ * <li>Its <em>observed event type</em> is a concrete class that
+ * extends {@link HasMetadata} and is the same type with which the
+ * associated event selector is primarily concerned.  For example, if
+ * your event selector is primarily concerned with {@link ConfigMap}s,
+ * then your observer method's observed event type should also be
+ * {@link ConfigMap}.</li>
+ *
+ * <li>Its observed event type is qualified with the same annotation
+ * that (a) qualifies the event selector and (b) is, in turn,
+ * qualified with {@link
+ * KubernetesEventSelector @KubernetesEventSelector}.  For example, if
+ * {@code @AllConfigMapEvents} appears on your event selector producer
+ * method, then it should appear on your observer method's {@link
+ * ConfigMap} parameter that is annotated with {@link
+ * Observes @Observes}.</li>
+ *
+ * <li>Its observed event type is qualified with one of {@link
+ * Addition @Addition}, {@link Modification @Modification} or {@link
+ * Deletion @Deletion}.</li>
+ *
+ * <li>If you need access to the prior state of the Kubernetes
+ * resource your observer method is observing, you may add it as a
+ * standard (injected) parameter in the method's parameter list, but
+ * it must be (a) qualified with the {@link Prior @Prior} annotation
+ * and (b) of a type identical to that of the observed event type.
+ * For example, if your observed event type is {@link ConfigMap}, then
+ * your prior state parameter must also be of type {@link ConfigMap}
+ * and must be annotated with {@link Prior @Prior}.</li>
+ *
+ * </ol>
+ *
+ * <p>Building upon the prior example, here is an example of an
+ * observer method that is "paired" with the event selector above:</p>
+ *
+ * <blockquote><pre>private final void onConfigMapModification({@link Observes &#64;Observes} &#64;AllConfigMapEvents {@link Modification &#64;Modification} final {@link ConfigMap} configMap, {@link Prior &#64;Prior} final Optional&lt;{@link ConfigMap}&gt; prior) {
+ *  assert configMap != null;
+ *  // do something interesting with this modified {@link ConfigMap}
+ *}</pre></blockquote>
+ *
  * @author <a href="https://about.me/lairdnelson"
  * target="_parent">Laird Nelson</a>
  *
  * @see AbstractBlockingExtension
  *
  * @see Controller
+ *
+ * @see KubernetesEventSelector
+ *
+ * @see Addition
+ *
+ * @see Modification
+ *
+ * @see Deletion
+ *
+ * @see Prior
  */
 public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
@@ -110,22 +331,17 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   
   private final Map<Set<Annotation>, Bean<?>> eventSelectorBeans;
 
-  final Set<Bean<?>> beans;
+  private final Set<Bean<?>> beans;
 
-  boolean asyncNeeded;
+  private final Set<Class<? extends HasMetadata>> priorTypes;
 
-  boolean syncNeeded;
+  private boolean asyncNeeded;
+
+  private boolean syncNeeded;
   
-  /**
-   * A {@link Logger} for use by this {@link KubernetesControllerExtension}.
-   *
-   * <p>This field is never {@code null}.</p>
-   *
-   * @see #createLogger()
-   */
-  private final Logger logger;
+  private final PriorContext priorContext;
 
-
+  
   /*
    * Constructors.
    */
@@ -133,6 +349,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   
   /**
    * Creates a new {@link KubernetesControllerExtension}.
+   *
+   * @see #KubernetesControllerExtension(CountDownLatch)
    */
   public KubernetesControllerExtension() {
     this(new CountDownLatch(1));
@@ -149,12 +367,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * AbstractBlockingExtension#AbstractBlockingExtension(CountDownLatch)}
    * constructor; must not be {@code null}
    *
+   * @see #KubernetesControllerExtension()
+   *
    * @see
    * AbstractBlockingExtension#AbstractBlockingExtension(CountDownLatch)
    */
   protected KubernetesControllerExtension(final CountDownLatch latch) {
     super(latch);
-    this.logger = this.createLogger();
     if (this.logger == null) {
       throw new IllegalStateException("createLogger() == null");
     }
@@ -163,9 +382,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, latch);
     }
+    
     this.eventSelectorBeans = new HashMap<>();
     this.beans = new HashSet<>();
+    this.priorTypes = new HashSet<>();
     this.controllers = new ArrayList<>();
+    this.priorContext = new PriorContext();
+
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
     }
@@ -176,20 +399,6 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * Instance methods.
    */
   
-
-  /**
-   * Returns a {@link Logger} for use by this {@link
-   * KubernetesControllerExtension}.
-   *
-   * <p>This method never returns {@code null}.</p>
-   *
-   * <p>Overrides of this method must not return {@code null}.</p>
-   *
-   * @return a non-{@code null} {@link Logger}
-   */
-  protected Logger createLogger() {
-    return Logger.getLogger(this.getClass().getName());
-  }
 
   /**
    * {@linkplain Observes Observes} the supplied {@link
@@ -344,10 +553,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   /**
    * {@linkplain Observes Observes} the supplied {@link
    * ProcessObserverMethod} event and calls the {@link
-   * #processPotentialEventSelectorObserverMethod(ObserverMethod,
+   * #processPotentialEventSelectorObserverMethod(ProcessObserverMethod,
    * BeanManager)} method with the return value of the event's {@link
    * ProcessObserverMethod#getObserverMethod()} method and the
    * supplied {@link BeanManager}.
+   *
+   * @param <X> a type that extends {@link HasMetadata} and therefore
+   * represents a persistent Kubernetes resource
    *
    * @param event the container lifecycle event being observed; may be
    * {@code null} in which case no action will be performed
@@ -355,12 +567,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * @param beanManager the {@link BeanManager} for the current CDI
    * container; may be {@code null}
    *
-   * @see #processPotentialEventSelectorObserverMethod(ObserverMethod,
+   * @see
+   * #processPotentialEventSelectorObserverMethod(ProcessObserverMethod,
    * BeanManager)
    */
   // Observer method processors are guaranteed by the specification to
   // be invoked after ProcessBean events.
-  private final void processObserverMethod(@Observes final ProcessObserverMethod<? extends org.microbean.kubernetes.controller.AbstractEvent<? extends HasMetadata>, ?> event, final BeanManager beanManager) {
+  private final <X extends HasMetadata> void processObserverMethod(@Observes final ProcessObserverMethod<X, ?> event, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -368,7 +581,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
     
     if (event != null) {
-      this.processPotentialEventSelectorObserverMethod(event.getObserverMethod(), beanManager);
+      this.processPotentialEventSelectorObserverMethod(event, beanManager);
     }
 
     if (this.logger.isLoggable(Level.FINER)) {
@@ -379,10 +592,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   /**
    * {@linkplain Observes Observes} the supplied {@link
    * ProcessSyntheticObserverMethod} event and calls the {@link
-   * #processPotentialEventSelectorObserverMethod(ObserverMethod,
+   * #processPotentialEventSelectorObserverMethod(ProcessObserverMethod,
    * BeanManager)} method with the return value of the event's {@link
    * ProcessSyntheticObserverMethod#getObserverMethod()} method and
    * the supplied {@link BeanManager}.
+   *
+   * @param <X> a type that extends {@link HasMetadata} and therefore
+   * represents a persistent Kubernetes resource
    *
    * @param event the container lifecycle event being observed; may be
    * {@code null} in which case no action will be performed
@@ -390,12 +606,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * @param beanManager the {@link BeanManager} for the current CDI
    * container; may be {@code null}
    *
-   * @see #processPotentialEventSelectorObserverMethod(ObserverMethod,
+   * @see
+   * #processPotentialEventSelectorObserverMethod(ProcessObserverMethod,
    * BeanManager)
    */
   // Observer method processors are guaranteed by the specification to
   // be invoked after ProcessBean events.
-  private final void processSyntheticObserverMethod(@Observes final ProcessSyntheticObserverMethod<? extends org.microbean.kubernetes.controller.AbstractEvent<? extends HasMetadata>, ?> event, final BeanManager beanManager) {
+  private final <X extends HasMetadata> void processSyntheticObserverMethod(@Observes final ProcessSyntheticObserverMethod<X, ?> event, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processSyntheticObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -403,7 +620,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
     
     if (event != null) {
-      this.processPotentialEventSelectorObserverMethod(event.getObserverMethod(), beanManager);
+      this.processPotentialEventSelectorObserverMethod(event, beanManager);
     }
 
     if (this.logger.isLoggable(Level.FINER)) {
@@ -429,10 +646,34 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
 
     if (event != null) {
+      event.addContext(this.priorContext);
+      
       this.eventSelectorBeans.clear();
       // TODO: consider: we have the ability to create Controller
       // beans here out of other bean raw materials
       // (e.g. appropriately-qualified knownObjects etc.).
+
+      synchronized (this.priorTypes) {
+        if (!this.priorTypes.isEmpty()) {
+          for (final Type priorType : this.priorTypes) {
+            assert priorType != null;
+            final Type[] priorTypeArray = new Type[] { priorType };
+            
+            event.addBean()
+              // This Bean is never created via this (required by CDI)
+              // callback; it is always supplied by
+              // PriorContext#get(Bean), so the container will think
+              // that it is eternal.
+              .createWith(cc -> { throw new UnsupportedOperationException(); })
+              .qualifiers(Prior.Literal.INSTANCE)
+              .scope(PriorScoped.class)
+              .types(new ParameterizedTypeImpl(null, Optional.class, priorTypeArray));
+            
+          }
+          this.priorTypes.clear();
+        }
+      }
+      
     }
 
     if (this.logger.isLoggable(Level.FINER)) {
@@ -473,12 +714,19 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.entering(cn, mn, new Object[] { ignored, beanManager });
     }
+
+    //
+    // TODO: INVESTIGATE: this doesn't *have* to be in an extension;
+    // we're just taking action when the container comes up, which we
+    // could do in a "normal" bean.  Of course, then we have to do
+    // something with this.beans.
+    //
     
     if (beanManager != null && !this.beans.isEmpty()) {
 
-      // We can't just put Configurations in our parameter list above,
-      // because according to the specification that will result in
-      // non-portable behavior.
+      // We can't just put Configurations in our incoming method
+      // parameters, because according to the specification that will
+      // result in non-portable behavior.
       final Bean<?> configurationsBean = beanManager.resolve(beanManager.getBeans(Configurations.class));
       assert configurationsBean != null;
       final Configurations configurations = (Configurations)beanManager.getReference(configurationsBean, Configurations.class, beanManager.createCreationalContext(configurationsBean));
@@ -499,15 +747,17 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           notificationOptions = (NotificationOptions)beanManager.getReference(notificationOptionsBean, NotificationOptions.class, beanManager.createCreationalContext(notificationOptionsBean));
         }
         
-        @SuppressWarnings("unchecked") // we know an Operation is of type X
+        @SuppressWarnings("unchecked")
         final X contextualReference = (X)beanManager.getReference(bean, getListableVersionWatchableType(bean), beanManager.createCreationalContext(bean));
 
-        final Controller<T> controller = new CDIController<>(contextualReference, synchronizationInterval, new HashMap<>(), new CDIEventDistributor<>(qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
+        final Controller<T> controller = new CDIController<>(contextualReference, synchronizationInterval, new HashMap<>(), new CDIEventDistributor<>(this.priorContext, qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
         if (this.logger.isLoggable(Level.INFO)) {
           this.logger.logp(Level.INFO, cn, mn, "Starting {0}", controller);
         }
         controller.start();
-        this.controllers.add(controller);
+        synchronized (this.controllers) {
+          this.controllers.add(controller);
+        }
       }
     }
     
@@ -593,7 +843,6 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    *
    * @see KubernetesEventSelector
    */
-  @SuppressWarnings("rawtypes")
   private final void processPotentialEventSelectorBean(final Bean<?> bean, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processPotentialEventSelectorBean";
@@ -627,8 +876,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * extension as sources of {@link Listable} and {@link
    * VersionWatchable} instances.
    *
-   * @param observerMethod the {@link ObserverMethod} to inspect; may
-   * be {@code null} in which case no action will be taken
+   * @param <X> a type that extends {@link HasMetadata} and therefore
+   * represents a persistent Kubernetes resource
+   *
+   * @param event the {@link ProcessObserverMethod} event to inspect;
+   * may be {@code null} in which case no action will be taken
    *
    * @param beanManager the {@link BeanManager} in effect for the
    * current CDI container; may be {@code null}
@@ -638,35 +890,50 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    *
    * @see KubernetesEventSelector
    */
-  private final void processPotentialEventSelectorObserverMethod(final ObserverMethod<? extends org.microbean.kubernetes.controller.AbstractEvent<? extends HasMetadata>> observerMethod, final BeanManager beanManager) {
+  private final <X extends HasMetadata> void processPotentialEventSelectorObserverMethod(final ProcessObserverMethod<X, ?> event, final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processPotentialEventSelectorObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
-      this.logger.entering(cn, mn, observerMethod);
+      this.logger.entering(cn, mn, new Object[] { event, beanManager });
     }
 
-    if (observerMethod != null) {
-      final Set<Annotation> kubernetesEventSelectors = Annotations.retainAnnotationsQualifiedWith(observerMethod.getObservedQualifiers(), KubernetesEventSelector.class, beanManager);
-      if (kubernetesEventSelectors != null && !kubernetesEventSelectors.isEmpty()) {
-        if (observerMethod.isAsync()) {
-          if (!this.asyncNeeded) {
-            this.asyncNeeded = true;
+    if (event != null) {
+      final ObserverMethod<X> observerMethod = event.getObserverMethod();
+      if (observerMethod != null) {
+        final Set<Annotation> kubernetesEventSelectors = Annotations.retainAnnotationsQualifiedWith(observerMethod.getObservedQualifiers(), KubernetesEventSelector.class, beanManager);
+        if (kubernetesEventSelectors != null && !kubernetesEventSelectors.isEmpty()) {
+          event.configureObserverMethod()
+            .notifyWith(new Notifier<>(observerMethod));
+          if (observerMethod.isAsync()) {
+            if (!this.asyncNeeded) {
+              this.asyncNeeded = true;
+            }
+          } else if (!this.syncNeeded) {
+            this.syncNeeded = true;
           }
-        } else if (!this.syncNeeded) {
-          this.syncNeeded = true;
-        }
-        final Bean<?> bean;
-        synchronized (this.eventSelectorBeans) {
-          bean = this.eventSelectorBeans.remove(kubernetesEventSelectors);
-        }
-        synchronized (this.beans) {
-          this.beans.add(bean);
+          final Bean<?> bean;
+          synchronized (this.eventSelectorBeans) {
+            bean = this.eventSelectorBeans.remove(kubernetesEventSelectors);
+          }
+          if (bean != null) {
+            boolean added;
+            synchronized (this.beans) {            
+              added = this.beans.add(bean);
+            }
+            if (added) {
+              final Class<? extends HasMetadata> concreteKubernetesResourceClass = extractConcreteKubernetesResourceClass(bean);
+              assert concreteKubernetesResourceClass != null;
+              synchronized (this.priorTypes) {
+                this.priorTypes.add(concreteKubernetesResourceClass);
+              }
+            }
+          }
         }
       }
     }
 
     if (this.logger.isLoggable(Level.FINER)) {
-      this.logger.exiting(cn, mn, observerMethod);
+      this.logger.exiting(cn, mn);
     }
   }
   
@@ -675,7 +942,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * Static methods.
    */
 
-
+  
   /**
    * A bit of a hack to return the {@link Type} that is the "right
    * kind" of {@link Listable} and {@link VersionWatchable}
@@ -689,7 +956,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * interface that implements both {@link Listable} and {@link
    * VersionWatchable}, which is a common constraint for {@link
    * Controller} operations, and is often what this method returns in
-   * {@link ParameterizedType} form.</p>
+   * {@link ParameterizedType} form.
    *
    * @param bean the {@link Bean} to inspect; may be {@code null} in
    * which case {@code null} will be returned
@@ -784,11 +1051,147 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     return returnValue;
   }
 
+  private static final Class<? extends HasMetadata> extractConcreteKubernetesResourceClass(final BeanAttributes<?> beanAttributes) {
+    Class<? extends HasMetadata> returnValue = null;
+    if (beanAttributes != null) {
+      returnValue = extractConcreteKubernetesResourceClass(beanAttributes.getTypes());
+    }
+    return returnValue;
+  }
+
+  private static final Class<? extends HasMetadata> extractConcreteKubernetesResourceClass(final Set<? extends Type> types) {
+    Class<? extends HasMetadata> returnValue = null;
+    if (types != null && !types.isEmpty()) {
+      final Set<Type> typesToProcess = new LinkedHashSet<>(types);
+      while (!typesToProcess.isEmpty()) {
+        final Iterator<Type> iterator = typesToProcess.iterator();
+        assert iterator != null;
+        assert iterator.hasNext();
+        final Type type = iterator.next();
+        iterator.remove();
+        if (type != null) {
+          if (type instanceof Class<?>) {
+            final Class<?> concreteClass = (Class<?>)type;
+            if (HasMetadata.class.isAssignableFrom(concreteClass)) {
+              @SuppressWarnings("unchecked")
+              final Class<? extends HasMetadata> temp = (Class<? extends HasMetadata>)concreteClass;
+              returnValue = temp;
+              break;
+            }
+          } else if (type instanceof ParameterizedType) {
+            final ParameterizedType pType = (ParameterizedType)type;
+            final Type[] actualTypeArguments = pType.getActualTypeArguments();
+            if (actualTypeArguments != null && actualTypeArguments.length > 0) {
+              for (final Type actualTypeArgument : actualTypeArguments) {
+                if (actualTypeArgument != null) {
+                  typesToProcess.add(actualTypeArgument);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return returnValue;
+  }
+
 
   /*
    * Inner and nested classes.
    */
 
+  
+  private static final class ParameterizedTypeImpl implements ParameterizedType {
+
+    private final Type ownerType;
+
+    private final Type rawType;
+
+    private final Type[] actualTypeArguments;
+    
+    private ParameterizedTypeImpl(final Type ownerType, final Class<?> rawType, final Type[] actualTypeArguments) {
+      super();
+      this.ownerType = ownerType;
+      this.rawType = Objects.requireNonNull(rawType);
+      this.actualTypeArguments = actualTypeArguments;
+    }
+    
+    @Override
+    public final Type getOwnerType() {
+      return this.ownerType;
+    }
+    
+    @Override
+    public final Type getRawType() {
+      return this.rawType;
+    }
+    
+    @Override
+    public final Type[] getActualTypeArguments() {
+      return this.actualTypeArguments;
+    }
+    
+    @Override
+    public final int hashCode() {
+      int hashCode = 17;
+      
+      final Object ownerType = this.getOwnerType();
+      int c = ownerType == null ? 0 : ownerType.hashCode();
+      hashCode = 37 * hashCode + c;
+      
+      final Object rawType = this.getRawType();
+      c = rawType == null ? 0 : rawType.hashCode();
+      hashCode = 37 * hashCode + c;
+      
+      final Type[] actualTypeArguments = this.getActualTypeArguments();
+      c = Arrays.hashCode(actualTypeArguments);
+      hashCode = 37 * hashCode + c;
+      
+      return hashCode;
+    }
+    
+    @Override
+    public final boolean equals(final Object other) {
+      if (other == this) {
+        return true;
+      } else if (other instanceof ParameterizedType) {
+        final ParameterizedType her = (ParameterizedType)other;
+        
+        final Object ownerType = this.getOwnerType();
+        if (ownerType == null) {
+          if (her.getOwnerType() != null) {
+            return false;
+          }
+        } else if (!ownerType.equals(her.getOwnerType())) {
+          return false;
+        }
+        
+        final Object rawType = this.getRawType();
+        if (rawType == null) {
+          if (her.getRawType() != null) {
+            return false;
+          }
+        } else if (!rawType.equals(her.getRawType())) {
+          return false;
+        }
+        
+        final Type[] actualTypeArguments = this.getActualTypeArguments();
+        if (!Arrays.equals(actualTypeArguments, her.getActualTypeArguments())) {
+          return false;
+        }
+        
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    @Override
+    public String toString() {
+      return this.getTypeName();
+    }
+    
+  }
 
   private static final class CDIController<T extends HasMetadata> extends Controller<T> {
 
@@ -796,24 +1199,36 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
     private final boolean close;
 
+    // This @SuppressWarnings("rawtypes") is here because the
+    // kubernetes-model project uses raw types throughout.  This class
+    // does not.
     @SuppressWarnings("rawtypes")
-    private <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<T>>> CDIController(final X operation,
-                                                                                                                                     final Duration synchronizationInterval,
-                                                                                                                                     final Map<Object, T> knownObjects,
-                                                                                                                                     final CDIEventDistributor<T> eventDistributor) {
+    private
+    <X extends Listable<? extends KubernetesResourceList>
+               & VersionWatchable<? extends Closeable, Watcher<T>>>
+    CDIController(final X operation,
+                  final Duration synchronizationInterval,
+                  final Map<Object, T> knownObjects,
+                  final CDIEventDistributor<T> eventDistributor) {
       this(operation, synchronizationInterval, knownObjects, new EventDistributor<>(knownObjects), true);
       assert this.eventDistributor != null;
       if (eventDistributor != null) {
         this.eventDistributor.addConsumer(eventDistributor);
       }      
     }
-    
+
+    // This @SuppressWarnings("rawtypes") is here because the
+    // kubernetes-model project uses raw types throughout.  This class
+    // does not.
     @SuppressWarnings("rawtypes")
-    private <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<T>>> CDIController(final X operation,
-                                                                                                                                     final Duration synchronizationInterval,
-                                                                                                                                     final Map<Object, T> knownObjects,
-                                                                                                                                     final EventDistributor<T> siphon,
-                                                                                                                                     final boolean close) {
+    private
+    <X extends Listable<? extends KubernetesResourceList>
+               & VersionWatchable<? extends Closeable, Watcher<T>>>
+    CDIController(final X operation,
+                  final Duration synchronizationInterval,
+                  final Map<Object, T> knownObjects,
+                  final EventDistributor<T> siphon,
+                  final boolean close) {
       super(operation, synchronizationInterval, knownObjects, siphon);
       this.eventDistributor = Objects.requireNonNull(siphon);
       this.close = close;
@@ -836,6 +1251,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   private static final class CDIEventDistributor<T extends HasMetadata> implements Consumer<AbstractEvent<? extends T>> {
 
     private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];
+
+    private final PriorContext priorContext;
     
     private final Annotation[] qualifiers;
 
@@ -847,16 +1264,27 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
     private final Logger logger;
     
-    private CDIEventDistributor(final Set<Annotation> qualifiers, final NotificationOptions notificationOptions, final boolean syncNeeded, final boolean asyncNeeded) {
+    private CDIEventDistributor(final PriorContext priorContext,
+                                final Set<Annotation> qualifiers,
+                                final NotificationOptions notificationOptions,
+                                final boolean syncNeeded,
+                                final boolean asyncNeeded) {
       super();
       final String cn = this.getClass().getName();      
       this.logger = Logger.getLogger(cn);
       assert this.logger != null;
       final String mn = "<init>";
       if (this.logger.isLoggable(Level.FINER)) {
-        this.logger.entering(cn, mn, new Object[] { qualifiers, notificationOptions, Boolean.valueOf(syncNeeded), Boolean.valueOf(asyncNeeded) });
+        this.logger.entering(cn, mn,
+                             new Object[] { priorContext,
+                                            qualifiers,
+                                            notificationOptions,
+                                            Boolean.valueOf(syncNeeded),
+                                            Boolean.valueOf(asyncNeeded)
+                             });
       }
 
+      this.priorContext = Objects.requireNonNull(priorContext);
       if (qualifiers == null) {
         this.qualifiers = EMPTY_ANNOTATION_ARRAY;
       } else {
@@ -880,25 +1308,113 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
 
       if (controllerEvent != null && (this.syncNeeded || this.asyncNeeded)) {
+
         final BeanManager beanManager = CDI.current().getBeanManager();
         assert beanManager != null;
+
         final javax.enterprise.event.Event<Object> cdiEventMachinery = beanManager.getEvent();
         assert cdiEventMachinery != null;
-        final TypeLiteral<AbstractEvent<? extends T>> eventTypeLiteral = new TypeLiteral<AbstractEvent<? extends T>>() {
-            private static final long serialVersionUID = 1L;
-          };
-        final javax.enterprise.event.Event<AbstractEvent<? extends T>> broadcaster = cdiEventMachinery.select(eventTypeLiteral, this.qualifiers);
-        assert broadcaster != null;
-        if (this.asyncNeeded) {
-          if (this.notificationOptions == null) {
-            broadcaster.fireAsync(controllerEvent);
+
+        // Copy the qualifiers we were supplied with into an array big
+        // enough to hold one more qualifier.  That qualifier will be
+        // based on the event type, which of course we didn't know at
+        // construction time.
+        final Annotation[] qualifiers = Arrays.copyOf(this.qualifiers, this.qualifiers.length + 1);
+        assert qualifiers != null;
+
+        final AbstractEvent.Type eventType = controllerEvent.getType();
+        assert eventType != null;
+
+        switch (eventType) {
+          
+        case ADDITION:
+          if (controllerEvent instanceof SynchronizationEvent) {
+            qualifiers[qualifiers.length - 1] = Addition.Literal.withSynchronization();
           } else {
-            broadcaster.fireAsync(controllerEvent, this.notificationOptions);
+            qualifiers[qualifiers.length - 1] = Addition.Literal.withoutSynchronization();
+          }
+          break;
+          
+        case MODIFICATION:
+          if (controllerEvent instanceof SynchronizationEvent) {
+            qualifiers[qualifiers.length - 1] = Modification.Literal.withSynchronization();
+          } else {
+            qualifiers[qualifiers.length - 1] = Modification.Literal.withoutSynchronization();
+          }
+          break;
+          
+        case DELETION:
+          assert !(controllerEvent instanceof SynchronizationEvent);
+          qualifiers[qualifiers.length - 1] = Deletion.Literal.INSTANCE;
+          break;
+          
+        default:
+          throw new IllegalStateException();
+          
+        }
+
+        // This resource will be the actual "event" we end up firing.
+        final T resource = controllerEvent.getResource();
+        assert resource != null;
+
+        // The "prior resource" represents the prior state (if any)
+        // and can be null.  We'll arrange for this to be "created" by
+        // our PriorContext CDI Context when observer methods contain
+        // a parameter qualified with @Prior.
+        this.priorContext.put(resource, Optional.ofNullable(controllerEvent.getPriorResource()));
+
+        @SuppressWarnings("unchecked")
+        final javax.enterprise.event.Event<T> broadcaster = cdiEventMachinery.select((Class<T>)resource.getClass(), qualifiers);
+
+        if (this.asyncNeeded) {
+
+          // Set up the machinery to fire the event asynchronously,
+          // possibly in parallel.
+          
+          final CompletionStage<T> stage;
+          if (this.notificationOptions == null) {
+            stage = broadcaster.fireAsync(resource);
+          } else {
+            stage = broadcaster.fireAsync(resource, this.notificationOptions);
+          }
+          assert stage != null;
+
+          // When all asynchronous observers have been notified, then
+          // fire synchronous events (if needed).  Ensure that the
+          // PriorContext that is responsible for supplying injected
+          // observer method parameters annotated with @Prior is
+          // deactivated in all cases.
+
+          // TODO: should we make it configurable whether to fire
+          // synchronous events before asynchronous events or the
+          // other way around?
+          
+          stage.whenComplete((event, throwable) -> {
+              if (throwable != null && this.logger.isLoggable(Level.SEVERE)) {
+                logger.logp(Level.SEVERE, cn, mn, throwable.getMessage(), throwable);
+              }
+              // TODO: should the presence of a non-null throwable
+              // cause us to not perform synchronous firing?
+              try {
+                assert event != null;
+                if (this.syncNeeded) {
+                  broadcaster.fire(event);
+                }
+              } finally {
+                this.priorContext.remove(event);
+              }
+            });
+          
+        } else {
+          assert this.syncNeeded;
+
+          try {
+            broadcaster.fire(resource);
+          } finally {
+            this.priorContext.remove(resource);
           }
         }
-        if (this.syncNeeded) {
-          broadcaster.fire(controllerEvent);
-        }
+        
       }
 
       if (this.logger.isLoggable(Level.FINER)) {
@@ -907,5 +1423,202 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
     
   }
-  
+
+  private static final class PriorContext implements AlterableContext {
+
+    private static final InheritableThreadLocal<CurrentEventContext> currentEventContext = new InheritableThreadLocal<CurrentEventContext>() {
+        @Override
+        protected final CurrentEventContext initialValue() {
+          return new CurrentEventContext();
+        }
+      };
+    
+    /**
+     * A {@linkplain Collections#synchronizedMap(Map) synchronized}
+     * {@link IdentityHashMap} that maps a "current" {@link
+     * HasMetadata} to its prior representation.
+     *
+     * @see #put(HasMetadata, Optional)
+     */
+    private final Map<HasMetadata, Optional<? extends HasMetadata>> instances;
+    
+    private PriorContext() {
+      super();
+      // This needs to be an IdentityHashMap under the covers because
+      // it turns out that all kubernetes-model classes use Lombok's
+      // indiscriminate equals()-and-hashCode() generation.  We need
+      // to track Kubernetes resources in this Context implementation
+      // by their actual JVM identity.
+      this.instances = Collections.synchronizedMap(new IdentityHashMap<>());
+    }
+
+    /**
+     * Activates this {@link PriorContext} <strong>for the {@linkplain
+     * Thread#currentThread() current <code>Thread</code>}</strong>.
+     *
+     * @param currentEvent the {@link HasMetadata} that is currently
+     * being fired as a CDI event; must not be {@code null}
+     *
+     * @exception NullPointerException if {@code currentEvent} is
+     * {@code null}
+     */
+    private static final void activate(final HasMetadata currentEvent) {
+      Objects.requireNonNull(currentEvent);
+      final CurrentEventContext c = currentEventContext.get();
+      assert c != null;
+      c.currentEvent = currentEvent;
+      c.active = true;
+    }
+
+    /**
+     * Deactivates this {@link PriorContext} <strong>for the {@linkplain
+     * Thread#currentThread() current <code>Thread</code>}</strong>.
+     */
+    private static final void deactivate() {
+      final CurrentEventContext c = currentEventContext.get();
+      assert c != null;
+      c.active = false;
+      c.currentEvent = null;
+      // Note: do NOT be tempted to call this.remove() here.
+    }
+
+    /**
+     * Associates the supplied {@code priorEvent} with the supplied
+     * {@code currentEvent} and returns any previously associated
+     * event.
+     *
+     * <p>This method <strong>may return {@code null}</strong>.</p>
+     *
+     * @param <X> a type that extends {@link HasMetadata} and therefore
+     * represents a persistent Kubernetes resource
+     *
+     * @param currentEvent a Kubernetes resource about to be fired as
+     * a CDI event; must not be {@code null}
+     *
+     * @param priorEvent an {@link Optional} Kubernetes resource that
+     * represents the last known state of the {@code currentEvent}
+     * Kubernetes resource; must not be {@code null}
+     *
+     * @return any previously associated Kubernetes resource as an
+     * {@link Optional}, <strong>or, somewhat unusually, {@code null}
+     * if there was no such {@link Optional}</strong>
+     *
+     * @exception NullPointerException if {@code currentEvent} or
+     * {@code priorEvent} is {@code null}
+     */
+    private final <X extends HasMetadata> Optional<X> put(final X currentEvent, final Optional<X> priorEvent) {
+      @SuppressWarnings("unchecked")
+      final Optional<X> returnValue = (Optional<X>)this.instances.put(Objects.requireNonNull(currentEvent),
+                                                                      Objects.requireNonNull(priorEvent));
+      return returnValue;
+    }
+
+    /**
+     * Removes the supplied {@link HasMetadata} from this {@link
+     * PriorContext}'s registry of such objects and returns any {@link
+     * Optional} indexed under it.
+     *
+     * <p>This method <strong>may return {@code null}</strong>.</p>
+     *
+     * @param currentEvent the {@link HasMetadata} to remove; must not
+     * be {@code null}
+     *
+     * @return an {@link Optional} representing the prior state
+     * indexed under the supplied {@link HasMetadata}, <strong>or
+     * {@code null}</strong>
+     *
+     * @exception NullPointerException if {@code currentEvent} is
+     * {@code null}
+     */
+    private final Optional<? extends HasMetadata> remove(final HasMetadata currentEvent) {
+      return this.instances.remove(Objects.requireNonNull(currentEvent));
+    }
+
+    private final Optional<? extends HasMetadata> get() {
+      if (!this.isActive()) {
+        throw new ContextNotActiveException();
+      }
+      final CurrentEventContext c = currentEventContext.get();
+      assert c != null;
+      assert c.active;
+      assert c.currentEvent != null;
+      // Yes, this can return null, and yes, our return type is
+      // Optional.  Do NOT be tempted to return an empty Optional
+      // here!
+      return this.instances.get(c.currentEvent);
+    }
+    
+    @Override
+    public final <T> T get(final Contextual<T> bean) {
+      @SuppressWarnings("unchecked")
+      final T returnValue = (T)this.get();
+      return returnValue;
+    }
+
+    @Override
+    public final <T> T get(final Contextual<T> bean, final CreationalContext<T> cc) {
+      @SuppressWarnings("unchecked")
+      final T returnValue = (T)this.get();
+      return returnValue;
+    }
+
+    @Override
+    public final void destroy(final Contextual<?> bean) {
+      if (!this.isActive()) {
+        throw new ContextNotActiveException();
+      }
+      final CurrentEventContext c = currentEventContext.get();
+      assert c != null;
+      assert c.active;
+      assert c.currentEvent != null;
+      this.remove(c.currentEvent);
+    }
+
+    @Override
+    public final Class<? extends Annotation> getScope() {
+      return PriorScoped.class;
+    }
+
+    @Override
+    public final boolean isActive() {
+      final CurrentEventContext c = currentEventContext.get();
+      assert c != null;
+      return c.active && c.currentEvent != null && this.instances.containsKey(c.currentEvent);
+    }
+
+    private static final class CurrentEventContext {
+
+      private volatile HasMetadata currentEvent;
+
+      private volatile boolean active;
+
+      private CurrentEventContext() {
+        super();
+      }
+      
+    }
+    
+  }
+
+  private static final class Notifier<T extends HasMetadata> implements EventConsumer<T> {
+
+    private final ObserverMethod<T> observerMethod;
+    
+    private Notifier(final ObserverMethod<T> observerMethod) {
+      super();
+      this.observerMethod = Objects.requireNonNull(observerMethod);
+    }
+
+    @Override
+    public final void accept(final EventContext<T> eventContext) {
+      try {
+        PriorContext.activate(Objects.requireNonNull(eventContext).getEvent()); // thread-specific
+        this.observerMethod.notify(eventContext);
+      } finally {
+        PriorContext.deactivate(); // thread-specific
+      }
+    }
+    
+  }
+
 }

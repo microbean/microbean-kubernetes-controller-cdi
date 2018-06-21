@@ -18,13 +18,13 @@ package org.microbean.kubernetes.controller.cdi;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
-import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import java.util.Optional;
+
 import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.context.BeforeDestroyed;
 import javax.enterprise.context.Initialized;
 
 import javax.enterprise.event.Observes;
@@ -37,12 +37,9 @@ import javax.inject.Qualifier;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapList;
 import io.fabric8.kubernetes.api.model.DoneableConfigMap;
-import io.fabric8.kubernetes.api.model.HasMetadata;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 
-import io.fabric8.kubernetes.client.dsl.base.HasMetadataOperation;
-import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Operation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 
@@ -75,7 +72,6 @@ public class TestEventDistribution {
    * Constructors.
    */
 
-  
   public TestEventDistribution() {
     super();
     instanceCount++;
@@ -88,8 +84,12 @@ public class TestEventDistribution {
     return client.configMaps();
   }
 
-  private final void onConfigMapEvent(@ObservesAsync @AllConfigMapEvents final org.microbean.kubernetes.controller.Event<? extends HasMetadata> event) {
-    System.out.println("*** configMap event: " + event);
+  private final void onConfigMapSynchronizationAddition(@ObservesAsync @AllConfigMapEvents @Addition(synchronization = true) final ConfigMap configMap) {
+    assertNotNull(configMap);
+  }
+  
+  private final void onConfigMapModification(@ObservesAsync @AllConfigMapEvents @Modification final ConfigMap configMap, @Prior final Optional<ConfigMap> prior) {
+    assertNotNull(configMap);
     org.microbean.cdi.AbstractBlockingExtension.unblockAll();
   }
 

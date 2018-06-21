@@ -4,7 +4,7 @@
 
   <groupId>org.microbean</groupId>
   <artifactId>microbean-kubernetes-controller-cdi</artifactId>
-  <version>0.0.6-SNAPSHOT</version>
+  <version>0.1.0-SNAPSHOT</version>
 
   <parent>
     <groupId>org.microbean</groupId>
@@ -322,6 +322,7 @@
             <skipClusterTests>${skipClusterTests}</skipClusterTests>
             <project.build.directory>${project.build.directory}</project.build.directory>
             <org.slf4j.simpleLogger.log.io.fabric8>${org.slf4j.simpleLogger.log.io.fabric8}</org.slf4j.simpleLogger.log.io.fabric8>
+            <org.slf4j.simpleLogger.log.org.jboss.weld>${org.slf4j.simpleLogger.log.org.jboss.weld}</org.slf4j.simpleLogger.log.org.jboss.weld>
           </systemPropertyVariables>
         </configuration>
       </plugin>
@@ -378,6 +379,7 @@
     <skipClusterTests>true</skipClusterTests>
 
     <org.slf4j.simpleLogger.log.io.fabric8>debug</org.slf4j.simpleLogger.log.io.fabric8>
+    <org.slf4j.simpleLogger.log.org.jboss.weld>debug</org.slf4j.simpleLogger.log.org.jboss.weld>
 
   </properties>
 
