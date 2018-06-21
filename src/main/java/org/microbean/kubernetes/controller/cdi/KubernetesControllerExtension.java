@@ -341,6 +341,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   
   private final PriorContext priorContext;
 
+  private final KubernetesEventContext kubernetesEventContext;
+
   
   /*
    * Constructors.
@@ -388,6 +390,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     this.priorTypes = new HashSet<>();
     this.controllers = new ArrayList<>();
     this.priorContext = new PriorContext();
+    this.kubernetesEventContext = new KubernetesEventContext();
 
     if (this.logger.isLoggable(Level.FINER)) {
       this.logger.exiting(cn, mn);
@@ -647,6 +650,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
     if (event != null) {
       event.addContext(this.priorContext);
+      event.addContext(this.kubernetesEventContext);
       
       this.eventSelectorBeans.clear();
       // TODO: consider: we have the ability to create Controller
@@ -658,7 +662,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           for (final Type priorType : this.priorTypes) {
             assert priorType != null;
             final Type[] priorTypeArray = new Type[] { priorType };
-            
+
             event.addBean()
               // This Bean is never created via this (required by CDI)
               // callback; it is always supplied by
@@ -750,7 +754,16 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         @SuppressWarnings("unchecked")
         final X contextualReference = (X)beanManager.getReference(bean, getListableVersionWatchableType(bean), beanManager.createCreationalContext(bean));
 
-        final Controller<T> controller = new CDIController<>(contextualReference, synchronizationInterval, new HashMap<>(), new CDIEventDistributor<>(this.priorContext, qualifiers, notificationOptions, this.syncNeeded, this.asyncNeeded));
+        final Controller<T> controller =
+          new CDIController<>(contextualReference,
+                              synchronizationInterval,
+                              new HashMap<>(),
+                              new CDIEventDistributor<>(this.priorContext,
+                                                        this.kubernetesEventContext,
+                                                        qualifiers,
+                                                        notificationOptions,
+                                                        this.syncNeeded,
+                                                        this.asyncNeeded));
         if (this.logger.isLoggable(Level.INFO)) {
           this.logger.logp(Level.INFO, cn, mn, "Starting {0}", controller);
         }
@@ -903,7 +916,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         final Set<Annotation> kubernetesEventSelectors = Annotations.retainAnnotationsQualifiedWith(observerMethod.getObservedQualifiers(), KubernetesEventSelector.class, beanManager);
         if (kubernetesEventSelectors != null && !kubernetesEventSelectors.isEmpty()) {
           event.configureObserverMethod()
-            .notifyWith(new Notifier<>(observerMethod));
+            .notifyWith(new Notifier<>(this.priorContext, this.kubernetesEventContext, observerMethod));
           if (observerMethod.isAsync()) {
             if (!this.asyncNeeded) {
               this.asyncNeeded = true;
@@ -1253,6 +1266,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     private static final Annotation[] EMPTY_ANNOTATION_ARRAY = new Annotation[0];
 
     private final PriorContext priorContext;
+
+    private final KubernetesEventContext kubernetesEventContext;
     
     private final Annotation[] qualifiers;
 
@@ -1265,6 +1280,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     private final Logger logger;
     
     private CDIEventDistributor(final PriorContext priorContext,
+                                final KubernetesEventContext kubernetesEventContext,
                                 final Set<Annotation> qualifiers,
                                 final NotificationOptions notificationOptions,
                                 final boolean syncNeeded,
@@ -1277,6 +1293,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       if (this.logger.isLoggable(Level.FINER)) {
         this.logger.entering(cn, mn,
                              new Object[] { priorContext,
+                                            kubernetesEventContext,
                                             qualifiers,
                                             notificationOptions,
                                             Boolean.valueOf(syncNeeded),
@@ -1285,6 +1302,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
 
       this.priorContext = Objects.requireNonNull(priorContext);
+      this.kubernetesEventContext = Objects.requireNonNull(kubernetesEventContext);
       if (qualifiers == null) {
         this.qualifiers = EMPTY_ANNOTATION_ARRAY;
       } else {
@@ -1401,6 +1419,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
                   broadcaster.fire(event);
                 }
               } finally {
+                this.kubernetesEventContext.destroy();
                 this.priorContext.remove(event);
               }
             });
@@ -1411,6 +1430,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           try {
             broadcaster.fire(resource);
           } finally {
+            this.kubernetesEventContext.destroy();
             this.priorContext.remove(resource);
           }
         }
@@ -1462,7 +1482,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
      * @exception NullPointerException if {@code currentEvent} is
      * {@code null}
      */
-    private static final void activate(final HasMetadata currentEvent) {
+    private final void activate(final HasMetadata currentEvent) {
       Objects.requireNonNull(currentEvent);
       final CurrentEventContext c = currentEventContext.get();
       assert c != null;
@@ -1474,7 +1494,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
      * Deactivates this {@link PriorContext} <strong>for the {@linkplain
      * Thread#currentThread() current <code>Thread</code>}</strong>.
      */
-    private static final void deactivate() {
+    private final void deactivate() {
       final CurrentEventContext c = currentEventContext.get();
       assert c != null;
       c.active = false;
@@ -1602,20 +1622,30 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
 
   private static final class Notifier<T extends HasMetadata> implements EventConsumer<T> {
 
+    private final PriorContext priorContext;
+
+    private final KubernetesEventContext kubernetesEventContext;
+    
     private final ObserverMethod<T> observerMethod;
     
-    private Notifier(final ObserverMethod<T> observerMethod) {
+    private Notifier(final PriorContext priorContext,
+                     final KubernetesEventContext kubernetesEventContext,
+                     final ObserverMethod<T> observerMethod) {
       super();
+      this.priorContext = Objects.requireNonNull(priorContext);
+      this.kubernetesEventContext = Objects.requireNonNull(kubernetesEventContext);
       this.observerMethod = Objects.requireNonNull(observerMethod);
     }
 
     @Override
     public final void accept(final EventContext<T> eventContext) {
       try {
-        PriorContext.activate(Objects.requireNonNull(eventContext).getEvent()); // thread-specific
+        this.kubernetesEventContext.setActive(true);
+        this.priorContext.activate(Objects.requireNonNull(eventContext).getEvent()); // thread-specific
         this.observerMethod.notify(eventContext);
       } finally {
-        PriorContext.deactivate(); // thread-specific
+        this.priorContext.deactivate(); // thread-specific
+        this.kubernetesEventContext.setActive(false);
       }
     }
     
