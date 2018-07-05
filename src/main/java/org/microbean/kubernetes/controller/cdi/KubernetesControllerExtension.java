@@ -45,6 +45,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -763,7 +764,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
                                                         qualifiers,
                                                         notificationOptions,
                                                         this.syncNeeded,
-                                                        this.asyncNeeded));
+                                                        this.asyncNeeded),
+                              t -> {
+                                if (this.logger.isLoggable(Level.SEVERE)) {
+                                  this.logger.logp(Level.SEVERE, cn, mn, t.getMessage(), t);
+                                }
+                                return true;
+                              });
         if (this.logger.isLoggable(Level.INFO)) {
           this.logger.logp(Level.INFO, cn, mn, "Starting {0}", controller);
         }
@@ -1222,11 +1229,12 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     CDIController(final X operation,
                   final Duration synchronizationInterval,
                   final Map<Object, T> knownObjects,
-                  final CDIEventDistributor<T> eventDistributor) {
-      this(operation, synchronizationInterval, knownObjects, new EventDistributor<>(knownObjects), true);
+                  final CDIEventDistributor<T> eventDistributor,
+                  final Function<? super Throwable, Boolean> errorHandler) {
+      this(operation, synchronizationInterval, errorHandler, knownObjects, new EventDistributor<>(knownObjects, synchronizationInterval), true);
       assert this.eventDistributor != null;
       if (eventDistributor != null) {
-        this.eventDistributor.addConsumer(eventDistributor);
+        this.eventDistributor.addConsumer(eventDistributor, errorHandler);
       }      
     }
 
@@ -1239,10 +1247,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
                & VersionWatchable<? extends Closeable, Watcher<T>>>
     CDIController(final X operation,
                   final Duration synchronizationInterval,
+                  final Function<? super Throwable, Boolean> errorHandler,
                   final Map<Object, T> knownObjects,
                   final EventDistributor<T> siphon,
                   final boolean close) {
-      super(operation, synchronizationInterval, knownObjects, siphon);
+      super(operation, null, synchronizationInterval, errorHandler, knownObjects, siphon);
       this.eventDistributor = Objects.requireNonNull(siphon);
       this.close = close;
     }
