@@ -71,6 +71,7 @@ import javax.enterprise.inject.spi.BeanAttributes;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.CDI;
+import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.EventContext;
 import javax.enterprise.inject.spi.ObserverMethod;
 import javax.enterprise.inject.spi.ProcessManagedBean;
@@ -774,7 +775,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         if (this.logger.isLoggable(Level.INFO)) {
           this.logger.logp(Level.INFO, cn, mn, "Starting {0}", controller);
         }
-        controller.start();
+        try {
+          controller.start();
+        } catch (final IOException ioException) {
+          throw new DeploymentException(ioException.getMessage(), ioException);
+        }
         synchronized (this.controllers) {
           this.controllers.add(controller);
         }
