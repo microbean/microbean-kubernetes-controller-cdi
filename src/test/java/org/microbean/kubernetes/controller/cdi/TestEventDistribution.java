@@ -22,6 +22,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -84,12 +86,20 @@ public class TestEventDistribution {
     return client.configMaps();
   }
 
+  @Produces
+  @ApplicationScoped
+  @AllConfigMapEvents
+  private static final Map<Object, ConfigMap> produceCache() {
+    return new HashMap<>();
+  }
+
   private final void onConfigMapSynchronizationAddition(@ObservesAsync @AllConfigMapEvents @Addition(synchronization = true) final ConfigMap configMap) {
     assertNotNull(configMap);
   }
   
-  private final void onConfigMapModification(@ObservesAsync @AllConfigMapEvents @Modification final ConfigMap configMap, @Prior final Optional<ConfigMap> prior) {
+  private final void onConfigMapModification(@ObservesAsync @AllConfigMapEvents @Modification final ConfigMap configMap, @Prior final Optional<ConfigMap> prior, @AllConfigMapEvents final Map<Object, ConfigMap> cache) {
     assertNotNull(configMap);
+    assertNotNull(cache);
     org.microbean.cdi.AbstractBlockingExtension.unblockAll();
   }
 

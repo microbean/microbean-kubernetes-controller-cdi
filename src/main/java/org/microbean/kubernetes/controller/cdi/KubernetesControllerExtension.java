@@ -74,6 +74,7 @@ import javax.enterprise.inject.spi.CDI;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.EventContext;
 import javax.enterprise.inject.spi.ObserverMethod;
+import javax.enterprise.inject.spi.ProcessBean;
 import javax.enterprise.inject.spi.ProcessManagedBean;
 import javax.enterprise.inject.spi.ProcessObserverMethod;
 import javax.enterprise.inject.spi.ProcessProducerField;
@@ -82,6 +83,8 @@ import javax.enterprise.inject.spi.ProcessSyntheticBean;
 import javax.enterprise.inject.spi.ProcessSyntheticObserverMethod;
 
 import javax.enterprise.inject.spi.configurator.ObserverMethodConfigurator.EventConsumer;
+
+import javax.enterprise.util.TypeLiteral;
 
 import javax.inject.Qualifier; // for javadoc only
 
@@ -142,7 +145,7 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * <blockquote><pre>&lt;dependency&gt;
  *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
  *  &lt;artifactId&gt;microbean-kubernetes-controller-cdi&lt;/artifactId&gt;
- *  &lt;version&gt;0.1.0&lt;/version&gt;
+ *  &lt;version&gt;0.1.5&lt;/version&gt;
  *  &lt;scope&gt;runtime&lt;/scope&gt;
  *&lt;/dependency&gt;</pre></blockquote>
  *
@@ -555,6 +558,57 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     }
   }
 
+  private final <T extends HasMetadata> void validateScopeOfCacheBean(@Observes final ProcessBean<Map<Object, T>> event) {
+    final String cn = this.getClass().getName();
+    final String mn = "validateScopeOfCacheBean";
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.entering(cn, mn, new Object[] { event });
+    }
+    if (event != null) {
+      final Bean<?> bean = event.getBean();
+      if (bean != null && !ApplicationScoped.class.equals(bean.getScope()) && this.logger.isLoggable(Level.WARNING)) {
+        this.logger.logp(Level.WARNING, cn, mn, "{0} is not in application scope.", bean);
+      }
+    }
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.exiting(cn, mn);
+    }
+  }
+
+  private final <T extends HasMetadata> void validateScopeOfCacheBean(@Observes final ProcessProducerField<Map<Object, T>, ?> event) {
+    final String cn = this.getClass().getName();
+    final String mn = "validateScopeOfCacheBean";
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.entering(cn, mn, new Object[] { event });
+    }
+    if (event != null) {
+      final Bean<?> bean = event.getBean();
+      if (bean != null && !ApplicationScoped.class.equals(bean.getScope()) && this.logger.isLoggable(Level.WARNING)) {
+        this.logger.logp(Level.WARNING, cn, mn, "{0} is not in application scope.", bean);
+      }
+    }
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.exiting(cn, mn);
+    }
+  }
+
+  private final <T extends HasMetadata> void validateScopeOfCacheBean(@Observes final ProcessProducerMethod<Map<Object, T>, ?> event) {
+    final String cn = this.getClass().getName();
+    final String mn = "validateScopeOfCacheBean";
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.entering(cn, mn, new Object[] { event });
+    }
+    if (event != null) {
+      final Bean<?> bean = event.getBean();
+      if (bean != null && !ApplicationScoped.class.equals(bean.getScope()) && this.logger.isLoggable(Level.WARNING)) {
+        this.logger.logp(Level.WARNING, cn, mn, "{0} is not in application scope.", bean);
+      }
+    }
+    if (this.logger.isLoggable(Level.FINER)) {
+      this.logger.exiting(cn, mn);
+    }
+  }
+  
   /**
    * {@linkplain Observes Observes} the supplied {@link
    * ProcessObserverMethod} event and calls the {@link
@@ -714,7 +768,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * @see #stopControllers(Object)
    */
   @SuppressWarnings("rawtypes")
-  private final <T extends HasMetadata, X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<T>>> void startControllers(@Observes @Initialized(ApplicationScoped.class) @Priority(LIBRARY_AFTER) final Object ignored, final BeanManager beanManager) { 
+  private final <T extends HasMetadata,
+                 X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<T>>>
+                void startControllers(@Observes
+                                      @Initialized(ApplicationScoped.class)
+                                      @Priority(LIBRARY_AFTER)
+                                      final Object ignored,
+                                      final BeanManager beanManager) { 
     final String cn = this.getClass().getName();
     final String mn = "startControllers";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -730,36 +790,76 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     
     if (beanManager != null && !this.beans.isEmpty()) {
 
-      // We can't just put Configurations in our incoming method
-      // parameters, because according to the specification that will
-      // result in non-portable behavior.
+      // Use the microbean-configuration-cdi library to abstract away
+      // configuration details.  But we can't just put a
+      // Configurations object in our incoming method parameters,
+      // because according to the specification that will result in
+      // non-portable behavior.  So we look it up "by hand".
       final Bean<?> configurationsBean = beanManager.resolve(beanManager.getBeans(Configurations.class));
       assert configurationsBean != null;
-      final Configurations configurations = (Configurations)beanManager.getReference(configurationsBean, Configurations.class, beanManager.createCreationalContext(configurationsBean));
-      assert configurations != null;
+      final Configurations configurations =
+        (Configurations)beanManager.getReference(configurationsBean,
+                                                 Configurations.class,
+                                                 beanManager.createCreationalContext(configurationsBean));
+      assert configurations != null;      
 
       final Duration synchronizationInterval = configurations.getValue("synchronizationInterval", Duration.class);
-
+      
+      final Type cacheType = new TypeLiteral<Map<Object, T>>() {
+          private static final long serialVersionUID = 1L;
+        }.getType();
+      
       for (final Bean<?> bean : this.beans) {
         assert bean != null;
         
         final Set<Annotation> qualifiers = bean.getQualifiers();
+        final Annotation[] qualifiersArray;
+        if (qualifiers == null) {
+          qualifiersArray = null;
+        } else {
+          qualifiersArray = qualifiers.toArray(new Annotation[qualifiers.size()]);
+        }
+
+        final Map<Object, T> cache;
+        final Set<Bean<?>> cacheBeans = beanManager.getBeans(cacheType, qualifiersArray);
+        if (cacheBeans == null || cacheBeans.isEmpty()) {
+          cache = null;
+        } else {
+          final Bean<?> cacheBean = beanManager.resolve(cacheBeans);
+          if (cacheBean == null) {
+            cache = null;
+          } else {
+            @SuppressWarnings("unchecked")
+            final Map<Object, T> temp =
+              (Map<Object, T>)beanManager.getReference(cacheBean,
+                                                       cacheType,
+                                                       beanManager.createCreationalContext(cacheBean));
+            cache = temp;
+          }
+        }
         
         final NotificationOptions notificationOptions;
-        final Bean<?> notificationOptionsBean = beanManager.resolve(beanManager.getBeans(NotificationOptions.class, qualifiers.toArray(new Annotation[qualifiers.size()])));
+        final Bean<?> notificationOptionsBean =
+          beanManager.resolve(beanManager.getBeans(NotificationOptions.class, qualifiersArray));
         if (notificationOptionsBean == null) {
           notificationOptions = null;
         } else {
-          notificationOptions = (NotificationOptions)beanManager.getReference(notificationOptionsBean, NotificationOptions.class, beanManager.createCreationalContext(notificationOptionsBean));
+          notificationOptions =
+            (NotificationOptions)beanManager.getReference(notificationOptionsBean,
+                                                          NotificationOptions.class,
+                                                          beanManager.createCreationalContext(notificationOptionsBean));
         }
         
         @SuppressWarnings("unchecked")
-        final X contextualReference = (X)beanManager.getReference(bean, getListableVersionWatchableType(bean), beanManager.createCreationalContext(bean));
+        final X contextualReference =
+          (X)beanManager.getReference(bean,
+                                      getListableVersionWatchableType(bean),
+                                      beanManager.createCreationalContext(bean));
 
         final Controller<T> controller =
           new CDIController<>(contextualReference,
                               synchronizationInterval,
-                              new HashMap<>(),
+                              cache,
                               new CDIEventDistributor<>(this.priorContext,
                                                         this.kubernetesEventContext,
                                                         qualifiers,
@@ -772,6 +872,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
                                 }
                                 return true;
                               });
+
         if (this.logger.isLoggable(Level.INFO)) {
           this.logger.logp(Level.INFO, cn, mn, "Starting {0}", controller);
         }
@@ -780,6 +881,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         } catch (final IOException ioException) {
           throw new DeploymentException(ioException.getMessage(), ioException);
         }
+        
         synchronized (this.controllers) {
           this.controllers.add(controller);
         }

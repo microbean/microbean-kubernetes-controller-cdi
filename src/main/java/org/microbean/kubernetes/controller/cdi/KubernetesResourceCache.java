@@ -22,25 +22,36 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import java.util.Map; // for javadoc only
+
+import javax.enterprise.util.AnnotationLiteral;
+
 import javax.inject.Qualifier;
 
+import io.fabric8.kubernetes.api.model.HasMetadata; // for javadoc only
+
 /**
- * A meta-annotation placed on annotation declarations that identifies
- * them as linking together a <em>Kubernetes event selector</em> and a
- * CDI event resulting from such a selection.
- *
- * <p>This meta-annotation is needed because two producer
- * methods&mdash;one producing a list of, say, {@code ConfigMap}s
- * matching criteria <em>X</em> and one producing a list of, say,
- * {@code ConfigMap}s matching criteria <em>Y</em> are otherwise
- * indistinguishable.</p>
+ * A {@linkplain Qualifier qualifier annotation} that indicates that
+ * the annotated element&mdash;which as of this writing must be a
+ * {@link Map Map&lt;String, T&gt;}, where {@code <T>} is a type that
+ * extends {@link HasMetadata}&mdash;is to be used to cache Kubernetes
+ * resources.
  *
  * @author <a href="https://about.me/lairdnelson"
  * target="_parent">Laird Nelson</a>
  */
 @Documented
+@Qualifier
 @Retention(value = RetentionPolicy.RUNTIME)
-@Target({ ElementType.ANNOTATION_TYPE })
-public @interface KubernetesEventSelector {
+@Target({ ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER, ElementType.TYPE })
+public @interface KubernetesResourceCache {
 
+  public static final class Literal extends AnnotationLiteral<KubernetesResourceCache> implements KubernetesResourceCache {
+
+    private static final long serialVersionUID = 1L;
+    
+    public static final KubernetesResourceCache INSTANCE = new Literal();
+    
+  }
+  
 }
