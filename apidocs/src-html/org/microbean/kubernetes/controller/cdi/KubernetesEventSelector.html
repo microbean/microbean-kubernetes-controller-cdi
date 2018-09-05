@@ -37,15 +37,21 @@
 <span class="sourceLineNo">029</span> * them as linking together a &lt;em&gt;Kubernetes event selector&lt;/em&gt; and a<a name="line.29"></a>
 <span class="sourceLineNo">030</span> * CDI event resulting from such a selection.<a name="line.30"></a>
 <span class="sourceLineNo">031</span> *<a name="line.31"></a>
-<span class="sourceLineNo">032</span> * @author &lt;a href="https://about.me/lairdnelson"<a name="line.32"></a>
-<span class="sourceLineNo">033</span> * target="_parent"&gt;Laird Nelson&lt;/a&gt;<a name="line.33"></a>
-<span class="sourceLineNo">034</span> */<a name="line.34"></a>
-<span class="sourceLineNo">035</span>@Documented<a name="line.35"></a>
-<span class="sourceLineNo">036</span>@Retention(value = RetentionPolicy.RUNTIME)<a name="line.36"></a>
-<span class="sourceLineNo">037</span>@Target({ ElementType.ANNOTATION_TYPE })<a name="line.37"></a>
-<span class="sourceLineNo">038</span>public @interface KubernetesEventSelector {<a name="line.38"></a>
-<span class="sourceLineNo">039</span><a name="line.39"></a>
-<span class="sourceLineNo">040</span>}<a name="line.40"></a>
+<span class="sourceLineNo">032</span> * &lt;p&gt;This meta-annotation is needed because two producer<a name="line.32"></a>
+<span class="sourceLineNo">033</span> * methods&amp;mdash;one producing a list of, say, {@code ConfigMap}s<a name="line.33"></a>
+<span class="sourceLineNo">034</span> * matching criteria &lt;em&gt;X&lt;/em&gt; and one producing a list of, say,<a name="line.34"></a>
+<span class="sourceLineNo">035</span> * {@code ConfigMap}s matching criteria &lt;em&gt;Y&lt;/em&gt; are otherwise<a name="line.35"></a>
+<span class="sourceLineNo">036</span> * indistinguishable.&lt;/p&gt;<a name="line.36"></a>
+<span class="sourceLineNo">037</span> *<a name="line.37"></a>
+<span class="sourceLineNo">038</span> * @author &lt;a href="https://about.me/lairdnelson"<a name="line.38"></a>
+<span class="sourceLineNo">039</span> * target="_parent"&gt;Laird Nelson&lt;/a&gt;<a name="line.39"></a>
+<span class="sourceLineNo">040</span> */<a name="line.40"></a>
+<span class="sourceLineNo">041</span>@Documented<a name="line.41"></a>
+<span class="sourceLineNo">042</span>@Retention(value = RetentionPolicy.RUNTIME)<a name="line.42"></a>
+<span class="sourceLineNo">043</span>@Target({ ElementType.ANNOTATION_TYPE })<a name="line.43"></a>
+<span class="sourceLineNo">044</span>public @interface KubernetesEventSelector {<a name="line.44"></a>
+<span class="sourceLineNo">045</span><a name="line.45"></a>
+<span class="sourceLineNo">046</span>}<a name="line.46"></a>
 
 
 
