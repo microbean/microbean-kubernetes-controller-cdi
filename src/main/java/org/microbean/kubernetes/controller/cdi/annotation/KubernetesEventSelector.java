@@ -14,15 +14,13 @@
  * implied.  See the License for the specific language governing
  * permissions and limitations under the License.
  */
-package org.microbean.kubernetes.controller.cdi;
+package org.microbean.kubernetes.controller.cdi.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-
-import javax.inject.Qualifier;
 
 /**
  * A meta-annotation placed on annotation declarations that identifies

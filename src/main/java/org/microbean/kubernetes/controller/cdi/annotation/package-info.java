@@ -16,7 +16,7 @@
  */
 
 /**
- * Provides classes and interfaces that help with writing <a
+ * Provides annotations that help with writing <a
  * href="https://engineering.bitnami.com/articles/a-deep-dive-into-kubernetes-controllers.html">Kubernetes
  * controllers</a> in terms of <a href="http://cdi-spec.org/">CDI</a>
  * <a href="https://www.pavel.cool/javaee/cdi-events/">events</a>.
@@ -25,7 +25,16 @@
  * target="_parent">Laird Nelson</a>
  *
  * @see
- * org.microbean.kubernetes.controller.cdi.KubernetesControllerExtension
+ * org.microbean.kubernetes.controller.cdi.annotation.Added
+ *
+ * @see
+ * org.microbean.kubernetes.controller.cdi.annotation.Modified
+ *
+ * @see
+ * org.microbean.kubernetes.controller.cdi.annotation.Deleted
+ *
+ * @see
+ * org.microbean.kubernetes.controller.cdi.annotation.Prior
  *
  * @see
  * org.microbean.kubernetes.controller.cdi.annotation.KubernetesEventSelector
@@ -34,4 +43,4 @@
   name = "Apache License 2.0",
   uri = "https://www.apache.org/licenses/LICENSE-2.0"
 )
-package org.microbean.kubernetes.controller.cdi;
+package org.microbean.kubernetes.controller.cdi.annotation;

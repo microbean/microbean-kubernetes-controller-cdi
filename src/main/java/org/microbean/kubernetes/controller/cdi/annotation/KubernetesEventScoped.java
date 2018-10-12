@@ -14,7 +14,7 @@
  * implied.  See the License for the specific language governing
  * permissions and limitations under the License.
  */
-package org.microbean.kubernetes.controller.cdi;
+package org.microbean.kubernetes.controller.cdi.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -22,51 +22,22 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import javax.inject.Qualifier;
-
-import javax.enterprise.util.AnnotationLiteral;
+import javax.enterprise.context.NormalScope;
 
 /**
+ * A {@link NormalScope}-annotated annotation denoting a scope that is
+ * active during the lifespan of a CDI event fired by the {@link
+ * org.microbean.kubernetes.controller.cdi.KubernetesControllerExtension}
+ * and only on the same thread as that on which the relevant observer
+ * method is notified, or one of its descendant threads.
  *
  * @author <a href="https://about.me/lairdnelson"
  * target="_parent">Laird Nelson</a>
  */
 @Documented
-@Qualifier
 @Retention(value = RetentionPolicy.RUNTIME)
-@Target({ ElementType.PARAMETER })
-public @interface Addition {
+@NormalScope
+@Target({ ElementType.FIELD, ElementType.METHOD, ElementType.TYPE })
+public @interface KubernetesEventScoped {
 
-  boolean synchronization() default false;
-
-  public static final class Literal extends AnnotationLiteral<Addition> implements Addition {
-
-    private static final long serialVersionUID = 1L;
-
-    private static final Addition WITH_SYNCHRONIZATION = new Literal(true);
-
-    private static final Addition WITHOUT_SYNCHRONIZATION = new Literal(false);
-
-    private final boolean synchronization;
-    
-    private Literal(final boolean synchronization) {
-      super();
-      this.synchronization = synchronization;
-    }
-
-    @Override
-    public final boolean synchronization() {
-      return this.synchronization;
-    }
-    
-    public static Addition withSynchronization() {
-      return WITH_SYNCHRONIZATION;
-    }
-
-    public static Addition withoutSynchronization() {
-      return WITHOUT_SYNCHRONIZATION;
-    }
-    
-  }
-  
 }

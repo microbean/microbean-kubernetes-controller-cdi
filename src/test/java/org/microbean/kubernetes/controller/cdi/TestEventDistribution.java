@@ -48,6 +48,11 @@ import io.fabric8.kubernetes.client.dsl.Resource;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import org.microbean.kubernetes.controller.cdi.annotation.Added;
+import org.microbean.kubernetes.controller.cdi.annotation.Modified;
+import org.microbean.kubernetes.controller.cdi.annotation.KubernetesEventSelector;
+import org.microbean.kubernetes.controller.cdi.annotation.Prior;
+
 import org.microbean.main.Main;
 
 import static org.junit.Assert.assertEquals;
@@ -93,11 +98,11 @@ public class TestEventDistribution {
     return new HashMap<>();
   }
 
-  private final void onConfigMapSynchronizationAddition(@ObservesAsync @AllConfigMapEvents @Addition(synchronization = true) final ConfigMap configMap) {
+  private final void onConfigMapSynchronizationAddition(@ObservesAsync @AllConfigMapEvents @Added(synchronization = true) final ConfigMap configMap) {
     assertNotNull(configMap);
   }
   
-  private final void onConfigMapModification(@ObservesAsync @AllConfigMapEvents @Modification final ConfigMap configMap, @Prior final Optional<ConfigMap> prior, @AllConfigMapEvents final Map<Object, ConfigMap> cache) {
+  private final void onConfigMapModification(@ObservesAsync @AllConfigMapEvents @Modified final ConfigMap configMap, @Prior final Optional<ConfigMap> prior, @AllConfigMapEvents final Map<Object, ConfigMap> cache) {
     assertNotNull(configMap);
     assertNotNull(cache);
     org.microbean.cdi.AbstractBlockingExtension.unblockAll();

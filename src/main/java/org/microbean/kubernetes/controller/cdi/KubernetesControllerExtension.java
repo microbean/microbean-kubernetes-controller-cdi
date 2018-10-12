@@ -20,7 +20,10 @@ import java.io.Closeable;
 import java.io.IOException;
 
 import java.lang.annotation.Annotation;
-import java.lang.annotation.ElementType; // for javadoc only
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -87,6 +90,7 @@ import javax.enterprise.inject.spi.configurator.ObserverMethodConfigurator.Event
 import javax.enterprise.util.TypeLiteral;
 
 import javax.inject.Qualifier; // for javadoc only
+import javax.inject.Scope;
 
 import io.fabric8.kubernetes.api.model.ConfigMap; // for javadoc only
 import io.fabric8.kubernetes.api.model.HasMetadata;
@@ -108,6 +112,12 @@ import org.microbean.kubernetes.controller.AbstractEvent;
 import org.microbean.kubernetes.controller.Controller;
 import org.microbean.kubernetes.controller.EventDistributor;
 import org.microbean.kubernetes.controller.SynchronizationEvent;
+
+import org.microbean.kubernetes.controller.cdi.annotation.Added;
+import org.microbean.kubernetes.controller.cdi.annotation.Deleted;
+import org.microbean.kubernetes.controller.cdi.annotation.Modified;
+import org.microbean.kubernetes.controller.cdi.annotation.KubernetesEventSelector;
+import org.microbean.kubernetes.controller.cdi.annotation.Prior;
 
 import static javax.interceptor.Interceptor.Priority.LIBRARY_AFTER;
 import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
@@ -145,7 +155,7 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * <blockquote><pre>&lt;dependency&gt;
  *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
  *  &lt;artifactId&gt;microbean-kubernetes-controller-cdi&lt;/artifactId&gt;
- *  &lt;version&gt;0.1.5&lt;/version&gt;
+ *  &lt;version&gt;0.2.0&lt;/version&gt;
  *  &lt;scope&gt;runtime&lt;/scope&gt;
  *&lt;/dependency&gt;</pre></blockquote>
  *
@@ -185,7 +195,7 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * <blockquote><pre>&lt;dependency&gt;
  *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
  *  &lt;artifactId&gt;microbean-configuration&lt;/artifactId&gt;
- *  &lt;version&gt;0.4.1&lt;/version&gt;
+ *  &lt;version&gt;0.4.2&lt;/version&gt;
  *  &lt;scope&gt;runtime&lt;/scope&gt;
  *&lt;/dependency&gt;</pre></blockquote>
  *
@@ -199,7 +209,7 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * <blockquote><pre>&lt;dependency&gt;
  *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
  *  &lt;artifactId&gt;microbean-configuration-cdi&lt;/artifactId&gt;
- *  &lt;version&gt;0.3.1&lt;/version&gt;
+ *  &lt;version&gt;0.4.2&lt;/version&gt;
  *  &lt;scope&gt;runtime&lt;/scope&gt;
  *&lt;/dependency&gt;</pre></blockquote>
  *
@@ -285,8 +295,8 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * Observes @Observes}.</li>
  *
  * <li>Its observed event type is qualified with one of {@link
- * Addition @Addition}, {@link Modification @Modification} or {@link
- * Deletion @Deletion}.</li>
+ * Added @Added}, {@link Modified @Modified} or {@link
+ * Deleted @Deleted}.</li>
  *
  * <li>If you need access to the prior state of the Kubernetes
  * resource your observer method is observing, you may add it as a
@@ -302,7 +312,7 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * <p>Building upon the prior example, here is an example of an
  * observer method that is "paired" with the event selector above:</p>
  *
- * <blockquote><pre>private final void onConfigMapModification({@link Observes &#64;Observes} &#64;AllConfigMapEvents {@link Modification &#64;Modification} final {@link ConfigMap} configMap, {@link Prior &#64;Prior} final Optional&lt;{@link ConfigMap}&gt; prior) {
+ * <blockquote><pre>private final void onConfigMapModification({@link Observes &#64;Observes} &#64;AllConfigMapEvents {@link Modified &#64;Modified} final {@link ConfigMap} configMap, {@link Prior &#64;Prior} final Optional&lt;{@link ConfigMap}&gt; prior) {
  *  assert configMap != null;
  *  // do something interesting with this modified {@link ConfigMap}
  *}</pre></blockquote>
@@ -316,11 +326,11 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  *
  * @see KubernetesEventSelector
  *
- * @see Addition
+ * @see Added
  *
- * @see Modification
+ * @see Modified
  *
- * @see Deletion
+ * @see Deleted
  *
  * @see Prior
  */
@@ -430,7 +440,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   // Ideally, we could do this all in a ProcessBean observer method.
   // See https://issues.jboss.org/browse/WELD-2461.
   @SuppressWarnings("rawtypes")
-  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processProducerMethod(@Observes final ProcessProducerMethod<X, ?> event, final BeanManager beanManager) {
+  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processProducerMethod(@Observes final ProcessProducerMethod<X, ?> event,
+                                                                                                                                                                          final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processProducerMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -468,7 +479,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   // Ideally, we could do this all in a ProcessBean observer method.
   // See https://issues.jboss.org/browse/WELD-2461.
   @SuppressWarnings("rawtypes")
-  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processProducerField(@Observes final ProcessProducerField<X, ?> event, final BeanManager beanManager) {
+  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processProducerField(@Observes final ProcessProducerField<X, ?> event,
+                                                                                                                                                                         final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processProducerField";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -506,7 +518,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
   // Ideally, we could do this all in a ProcessBean observer method.
   // See https://issues.jboss.org/browse/WELD-2461.
   @SuppressWarnings("rawtypes")
-  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processManagedBean(@Observes final ProcessManagedBean<X> event, final BeanManager beanManager) {
+  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processManagedBean(@Observes final ProcessManagedBean<X> event,
+                                                                                                                                                                       final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processManagedBean";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -542,7 +555,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * @see #processPotentialEventSelectorBean(Bean, BeanManager)
    */
   @SuppressWarnings("rawtypes")
-  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processSyntheticBean(@Observes final ProcessSyntheticBean<X> event, final BeanManager beanManager) {
+  private final <X extends Listable<? extends KubernetesResourceList> & VersionWatchable<? extends Closeable, Watcher<? extends HasMetadata>>> void processSyntheticBean(@Observes final ProcessSyntheticBean<X> event,
+                                                                                                                                                                         final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processSyntheticBean";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -632,7 +646,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    */
   // Observer method processors are guaranteed by the specification to
   // be invoked after ProcessBean events.
-  private final <X extends HasMetadata> void processObserverMethod(@Observes final ProcessObserverMethod<X, ?> event, final BeanManager beanManager) {
+  private final <X extends HasMetadata> void processObserverMethod(@Observes final ProcessObserverMethod<X, ?> event,
+                                                                   final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -671,7 +686,8 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    */
   // Observer method processors are guaranteed by the specification to
   // be invoked after ProcessBean events.
-  private final <X extends HasMetadata> void processSyntheticObserverMethod(@Observes final ProcessSyntheticObserverMethod<X, ?> event, final BeanManager beanManager) {
+  private final <X extends HasMetadata> void processSyntheticObserverMethod(@Observes final ProcessSyntheticObserverMethod<X, ?> event,
+                                                                            final BeanManager beanManager) {
     final String cn = this.getClass().getName();
     final String mn = "processSyntheticObserverMethod";
     if (this.logger.isLoggable(Level.FINER)) {
@@ -781,13 +797,6 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       this.logger.entering(cn, mn, new Object[] { ignored, beanManager });
     }
 
-    //
-    // TODO: INVESTIGATE: this doesn't *have* to be in an extension;
-    // we're just taking action when the container comes up, which we
-    // could do in a "normal" bean.  Of course, then we have to do
-    // something with this.beans.
-    //
-    
     if (beanManager != null && !this.beans.isEmpty()) {
 
       // Use the microbean-configuration-cdi library to abstract away
@@ -886,6 +895,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           this.controllers.add(controller);
         }
       }
+      
     }
     
     if (this.logger.isLoggable(Level.FINER)) {
@@ -902,7 +912,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    * {@linkplain #controllers <tt>Controller</tt> instances that were
    * started} by {@linkplain Controller#close() closing} them.
    *
-   * @param ignored the actual {@link BeforeDestroyed} event; ignored;
+   * @param event the actual {@link BeforeDestroyed} event; ignored;
    * may be {@code null}
    *
    * @exception IOException if {@link Controller#close()} throws an
@@ -910,11 +920,15 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
    *
    * @see #startControllers(Object, BeanManager)
    */
-  private final void stopControllers(@Observes @BeforeDestroyed(ApplicationScoped.class) @Priority(LIBRARY_BEFORE) final Object ignored) throws IOException {
+  private final void stopControllers(@Observes
+                                     @BeforeDestroyed(ApplicationScoped.class)
+                                     @Priority(LIBRARY_BEFORE)
+                                     final Object event)
+    throws IOException {
     final String cn = this.getClass().getName();
     final String mn = "stopControllers";
     if (this.logger.isLoggable(Level.FINER)) {
-      this.logger.entering(cn, mn, ignored);
+      this.logger.entering(cn, mn, event);
     }
 
     Exception exception = null;
@@ -1463,23 +1477,23 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
           
         case ADDITION:
           if (controllerEvent instanceof SynchronizationEvent) {
-            qualifiers[qualifiers.length - 1] = Addition.Literal.withSynchronization();
+            qualifiers[qualifiers.length - 1] = Added.Literal.withSynchronization();
           } else {
-            qualifiers[qualifiers.length - 1] = Addition.Literal.withoutSynchronization();
+            qualifiers[qualifiers.length - 1] = Added.Literal.withoutSynchronization();
           }
           break;
           
         case MODIFICATION:
           if (controllerEvent instanceof SynchronizationEvent) {
-            qualifiers[qualifiers.length - 1] = Modification.Literal.withSynchronization();
+            qualifiers[qualifiers.length - 1] = Modified.Literal.withSynchronization();
           } else {
-            qualifiers[qualifiers.length - 1] = Modification.Literal.withoutSynchronization();
+            qualifiers[qualifiers.length - 1] = Modified.Literal.withoutSynchronization();
           }
           break;
           
         case DELETION:
           assert !(controllerEvent instanceof SynchronizationEvent);
-          qualifiers[qualifiers.length - 1] = Deletion.Literal.INSTANCE;
+          qualifiers[qualifiers.length - 1] = Deleted.Literal.INSTANCE;
           break;
           
         default:
@@ -1765,6 +1779,13 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
     }
     
+  }
+
+  @Retention(value = RetentionPolicy.RUNTIME)
+  @Scope // deliberately NOT NormalScope
+  @Target({ ElementType.TYPE, ElementType.METHOD, ElementType.FIELD })
+  private static @interface PriorScoped {
+
   }
 
 }

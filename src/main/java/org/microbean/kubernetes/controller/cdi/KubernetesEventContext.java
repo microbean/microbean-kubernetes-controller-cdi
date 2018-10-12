@@ -28,6 +28,8 @@ import javax.enterprise.context.spi.AlterableContext;
 import javax.enterprise.context.spi.Contextual;
 import javax.enterprise.context.spi.CreationalContext;
 
+import org.microbean.kubernetes.controller.cdi.annotation.KubernetesEventScoped;
+
 class KubernetesEventContext implements AlterableContext {
 
   private static final InheritableThreadLocal<Scope> scope = new InheritableThreadLocal<Scope>() {

@@ -14,7 +14,7 @@
  * implied.  See the License for the specific language governing
  * permissions and limitations under the License.
  */
-package org.microbean.kubernetes.controller.cdi;
+package org.microbean.kubernetes.controller.cdi.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -33,9 +33,9 @@ import javax.enterprise.util.AnnotationLiteral;
 import io.fabric8.kubernetes.api.model.HasMetadata; // for javadoc only
 
 /**
- * An extraordinarily special-purpose {@link Qualifier} annotation
- * that may be used only to qualify a parameter in an observer method
- * that meets the following criteria:
+ * <strong>An extraordinarily special-purpose {@link Qualifier}
+ * annotation</strong> that may be used <em>only</em> to qualify a
+ * parameter in an observer method that meets the following criteria:
  *
  * <ol>
  *
@@ -45,15 +45,14 @@ import io.fabric8.kubernetes.api.model.HasMetadata; // for javadoc only
  *
  * <li>The observer method's <a
  * href="http://docs.jboss.org/cdi/spec/2.0/cdi-spec.html#events">observed
- * event type</a> parameter is qualified either directly with {@link
- * KubernetesEventSelector} or with an annotation on which {@link
- * KubernetesEventSelector} appears.</li>
+ * event type</a> parameter is qualified with an annotation on which
+ * {@link KubernetesEventSelector} and {@link Qualifier} appear.</li>
  *
  * <li>The type of the parameter in question is a parameterized type
  * whose {@linkplain ParameterizedType#getRawType() raw type} is
  * {@link Optional Optional} and whose sole {@linkplain
  * ParameterizedType#getActualTypeArguments() actual type argument} is
- * identical to the observer method's <a
+ * <em>identical</em> to the observer method's <a
  * href="http://docs.jboss.org/cdi/spec/2.0/cdi-spec.html#events">observed
  * event type</a>.</li>
  *

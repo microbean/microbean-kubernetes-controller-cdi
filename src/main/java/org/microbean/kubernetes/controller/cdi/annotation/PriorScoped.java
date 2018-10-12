@@ -14,7 +14,7 @@
  * implied.  See the License for the specific language governing
  * permissions and limitations under the License.
  */
-package org.microbean.kubernetes.controller.cdi;
+package org.microbean.kubernetes.controller.cdi.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -22,36 +22,18 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import java.util.Map; // for javadoc only
-
-import javax.enterprise.util.AnnotationLiteral;
-
-import javax.inject.Qualifier;
-
-import io.fabric8.kubernetes.api.model.HasMetadata; // for javadoc only
+import javax.inject.Scope; // deliberately NOT NormalScope
 
 /**
- * A {@linkplain Qualifier qualifier annotation} that indicates that
- * the annotated element&mdash;which as of this writing must be a
- * {@link Map Map&lt;String, T&gt;}, where {@code <T>} is a type that
- * extends {@link HasMetadata}&mdash;is to be used to cache Kubernetes
- * resources.
  *
  * @author <a href="https://about.me/lairdnelson"
  * target="_parent">Laird Nelson</a>
  */
+@Deprecated
 @Documented
-@Qualifier
 @Retention(value = RetentionPolicy.RUNTIME)
-@Target({ ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER, ElementType.TYPE })
-public @interface KubernetesResourceCache {
+@Scope // deliberately NOT NormalScope
+@Target({ ElementType.TYPE, ElementType.METHOD, ElementType.FIELD })
+@interface PriorScoped {
 
-  public static final class Literal extends AnnotationLiteral<KubernetesResourceCache> implements KubernetesResourceCache {
-
-    private static final long serialVersionUID = 1L;
-    
-    public static final KubernetesResourceCache INSTANCE = new Literal();
-    
-  }
-  
 }
