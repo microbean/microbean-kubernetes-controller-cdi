@@ -1,1 +1,2 @@
 org.microbean.kubernetes.controller.cdi
+org.microbean.kubernetes.controller.cdi.annotation
