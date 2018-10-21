@@ -42,7 +42,7 @@ import io.fabric8.kubernetes.api.model.DoneableConfigMap;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 
-import io.fabric8.kubernetes.client.dsl.Operation;
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 
 import org.junit.BeforeClass;
@@ -57,6 +57,7 @@ import org.microbean.main.Main;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeFalse;
 
 @ApplicationScoped
@@ -86,25 +87,34 @@ public class TestEventDistribution {
 
   @Produces
   @ApplicationScoped
-  @AllConfigMapEvents
-  private static final Operation<ConfigMap, ConfigMapList, DoneableConfigMap, Resource<ConfigMap, DoneableConfigMap>> selectAllConfigMaps(final KubernetesClient client) {
-    return client.configMaps();
+  @AllDefaultConfigMapEvents
+  private static final NonNamespaceOperation<ConfigMap, ConfigMapList, DoneableConfigMap, Resource<ConfigMap, DoneableConfigMap>> selectAllDefaultConfigMaps(final KubernetesClient client) {
+    return client.configMaps().inNamespace("default");
   }
 
   @Produces
   @ApplicationScoped
-  @AllConfigMapEvents
+  @AllDefaultConfigMapEvents
   private static final Map<Object, ConfigMap> produceCache() {
     return new HashMap<>();
   }
 
-  private final void onConfigMapSynchronizationAddition(@ObservesAsync @AllConfigMapEvents @Added(synchronization = true) final ConfigMap configMap) {
+  private final void onConfigMapSynchronizationAddition(@ObservesAsync @AllDefaultConfigMapEvents @Added(synchronization = true) final ConfigMap configMap) {
     assertNotNull(configMap);
   }
   
-  private final void onConfigMapModification(@ObservesAsync @AllConfigMapEvents @Modified final ConfigMap configMap, @Prior final Optional<ConfigMap> prior, @AllConfigMapEvents final Map<Object, ConfigMap> cache) {
+  private final void onConfigMapModification(@ObservesAsync
+                                             @AllDefaultConfigMapEvents
+                                             @Modified
+                                             final ConfigMap configMap,
+                                             @Prior
+                                             final Optional<ConfigMap> prior,
+                                             @AllDefaultConfigMapEvents
+                                             final Map<Object, ConfigMap> cache) {
     assertNotNull(configMap);
     assertNotNull(cache);
+    assertNotNull(prior);
+    assertTrue("prior is not present", prior.isPresent());
     org.microbean.cdi.AbstractBlockingExtension.unblockAll();
   }
 
@@ -132,7 +142,7 @@ public class TestEventDistribution {
   @Qualifier
   @Retention(value = RetentionPolicy.RUNTIME)
   @Target({ ElementType.METHOD, ElementType.PARAMETER })
-  private @interface AllConfigMapEvents {
+  private @interface AllDefaultConfigMapEvents {
 
   }
   

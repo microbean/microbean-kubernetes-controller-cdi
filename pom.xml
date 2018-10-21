@@ -270,7 +270,7 @@
       
       <resource>
         <targetPath>META-INF</targetPath>
-        <directory />
+        <directory>${project.basedir}</directory>
         <includes>
           <include>LICENSE</include>
         </includes>

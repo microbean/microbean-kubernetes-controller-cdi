@@ -87,8 +87,6 @@ import javax.enterprise.inject.spi.ProcessSyntheticObserverMethod;
 
 import javax.enterprise.inject.spi.configurator.ObserverMethodConfigurator.EventConsumer;
 
-import javax.enterprise.util.TypeLiteral;
-
 import javax.inject.Qualifier; // for javadoc only
 import javax.inject.Scope;
 
@@ -107,6 +105,8 @@ import org.microbean.cdi.AbstractBlockingExtension;
 import org.microbean.cdi.Annotations;
 
 import org.microbean.configuration.api.Configurations;
+
+import org.microbean.development.annotation.Issue;
 
 import org.microbean.kubernetes.controller.AbstractEvent;
 import org.microbean.kubernetes.controller.Controller;
@@ -155,7 +155,7 @@ import static javax.interceptor.Interceptor.Priority.LIBRARY_BEFORE;
  * <blockquote><pre>&lt;dependency&gt;
  *  &lt;groupId&gt;org.microbean&lt;/groupId&gt;
  *  &lt;artifactId&gt;microbean-kubernetes-controller-cdi&lt;/artifactId&gt;
- *  &lt;version&gt;0.2.0&lt;/version&gt;
+ *  &lt;version&gt;0.2.1&lt;/version&gt;
  *  &lt;scope&gt;runtime&lt;/scope&gt;
  *&lt;/dependency&gt;</pre></blockquote>
  *
@@ -733,7 +733,6 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         if (!this.priorTypes.isEmpty()) {
           for (final Type priorType : this.priorTypes) {
             assert priorType != null;
-            final Type[] priorTypeArray = new Type[] { priorType };
 
             event.addBean()
               // This Bean is never created via this (required by CDI)
@@ -743,7 +742,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
               .createWith(cc -> { throw new UnsupportedOperationException(); })
               .qualifiers(Prior.Literal.INSTANCE)
               .scope(PriorScoped.class)
-              .types(new ParameterizedTypeImpl(null, Optional.class, priorTypeArray));
+              .types(new ParameterizedTypeImpl(null, Optional.class, new Type[] { priorType }));
             
           }
           this.priorTypes.clear();
@@ -813,11 +812,7 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       assert configurations != null;      
 
       final Duration synchronizationInterval = configurations.getValue("synchronizationInterval", Duration.class);
-      
-      final Type cacheType = new TypeLiteral<Map<Object, T>>() {
-          private static final long serialVersionUID = 1L;
-        }.getType();
-      
+
       for (final Bean<?> bean : this.beans) {
         assert bean != null;
         
@@ -828,6 +823,9 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
         } else {
           qualifiersArray = qualifiers.toArray(new Annotation[qualifiers.size()]);
         }
+
+        @Issue(id = "6", uri = "https://github.com/microbean/microbean-kubernetes-controller-cdi/issues/6")
+        final Type cacheType = new ParameterizedTypeImpl(Map.class, new Type[] { Object.class, extractConcreteKubernetesResourceClass(bean) });
 
         final Map<Object, T> cache;
         final Set<Bean<?>> cacheBeans = beanManager.getBeans(cacheType, qualifiersArray);
@@ -845,6 +843,11 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
                                                        beanManager.createCreationalContext(cacheBean));
             cache = temp;
           }
+        }
+        if (cache == null && this.logger.isLoggable(Level.INFO)) {
+          this.logger.logp(Level.INFO, cn, mn,
+                           "No Kubernetes resource cache found for qualifiers: {0}",
+                           qualifiers);
         }
         
         final NotificationOptions notificationOptions;
@@ -1249,12 +1252,19 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     private final Type rawType;
 
     private final Type[] actualTypeArguments;
+
+    private final int hashCode;
+
+    private ParameterizedTypeImpl(final Class<?> rawType, final Type[] actualTypeArguments) {
+      this(null, rawType, actualTypeArguments);
+    }
     
     private ParameterizedTypeImpl(final Type ownerType, final Class<?> rawType, final Type[] actualTypeArguments) {
       super();
       this.ownerType = ownerType;
       this.rawType = Objects.requireNonNull(rawType);
       this.actualTypeArguments = actualTypeArguments;
+      this.hashCode = this.computeHashCode();
     }
     
     @Override
@@ -1274,6 +1284,10 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
     
     @Override
     public final int hashCode() {
+      return this.hashCode;
+    }
+
+    private final int computeHashCode() {
       int hashCode = 17;
       
       final Object ownerType = this.getOwnerType();
@@ -1327,11 +1341,6 @@ public class KubernetesControllerExtension extends AbstractBlockingExtension {
       }
     }
 
-    @Override
-    public String toString() {
-      return this.getTypeName();
-    }
-    
   }
 
   private static final class CDIController<T extends HasMetadata> extends Controller<T> {
